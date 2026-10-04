@@ -9,11 +9,11 @@
     <style>
         * { -webkit-tap-highlight-color: transparent; box-sizing: border-box; }
         html, body {
-            min-height: 100%;
+            width: 100%;
+            height: 100%;
             margin: 0;
             padding: 0;
-            overflow-x: hidden;
-            overflow-y: auto;
+            overflow: hidden;
             background: #0d0c11;
             font-family: 'DotGothic16', monospace;
             color: #f3efe6;
@@ -22,12 +22,14 @@
             touch-action: manipulation;
         }
         body {
-            min-height: 100dvh;
+            height: 100dvh;
+            min-height: 0;
             display: flex;
             flex-direction: column;
-            padding: max(6px, env(safe-area-inset-top)) max(6px, env(safe-area-inset-right)) max(12px, env(safe-area-inset-bottom)) max(6px, env(safe-area-inset-left));
+            padding: max(4px, env(safe-area-inset-top)) max(6px, env(safe-area-inset-right)) max(4px, env(safe-area-inset-bottom)) max(6px, env(safe-area-inset-left));
             max-width: 520px;
             margin: 0 auto;
+            overflow: hidden;
         }
         canvas {
             image-rendering: pixelated;
@@ -112,10 +114,10 @@
     </header>
 
     <!-- メイン -->
-    <div class="flex-1 flex flex-col min-h-0 gap-1.5">
+    <div class="main-layout flex-1 flex flex-col min-h-0 gap-1.5">
 
         <!-- マップ + D-Pad -->
-        <section class="pixel-box p-2 flex flex-col min-h-0 flex-[1.6]">
+        <section class="map-section pixel-box p-2 flex flex-col min-h-0 flex-[1.6]">
             <div class="flex justify-between items-center mb-1 shrink-0">
                 <div id="view-title" class="text-xs font-bold text-[#f39c38]">地下ダンジョン 探索中</div>
                 <div class="text-[10px] text-[#8c88a3]">位置: (<span id="pos-x">1</span>, <span id="pos-y">1</span>)</div>
@@ -203,7 +205,7 @@
         </section>
 
         <!-- ステータス -->
-        <section class="pixel-box p-2 shrink-0">
+        <section class="status-section pixel-box p-2 shrink-0">
             <div class="flex justify-between items-center mb-1.5">
                 <div class="flex items-center gap-2">
                     <input type="text" id="player-name-input" value="エリック" maxlength="8" class="bg-[#121118] border-2 border-[#434059] px-2 py-1 text-xs w-24 focus:outline-none focus:border-[#f39c38]">
@@ -242,7 +244,7 @@
     </div>
 
     <!-- ログ -->
-    <section class="pixel-box p-2 mt-1.5 shrink-0">
+    <section id="log-section" class="pixel-box p-2 mt-1.5 shrink-0">
         <div class="flex justify-between items-center mb-1">
             <div class="text-[11px] text-[#f39c38] font-bold">📜 冒険の記録</div>
             <button onclick="clearLog()" class="text-[10px] text-[#8c88a3]">消去</button>
