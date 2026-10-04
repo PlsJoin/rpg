@@ -2,11 +2,15 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>ピクセルクエスト - レトロRPG</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=DotGothic16&display=swap" rel="stylesheet">
     <style>
+        * {
+            -webkit-tap-highlight-color: transparent;
+            box-sizing: border-box;
+        }
         body {
             font-family: 'DotGothic16', monospace;
             background-color: #0d0c11;
@@ -15,6 +19,9 @@
             -webkit-user-select: none;
             touch-action: manipulation;
             overflow: hidden;
+            height: 100dvh;
+            margin: 0;
+            padding: 0;
         }
         canvas {
             image-rendering: pixelated;
@@ -34,12 +41,32 @@
             border: 3px solid #434059;
             box-shadow: inset 2px 2px 0px #6b678c, inset -2px -2px 0px #2a2838, 3px 3px 0px rgba(0,0,0,0.6);
             background-color: #2b283a;
-            transition: transform 0.05s ease, background-color 0.05s ease;
+            transition: transform 0.05s ease, background-color 0.05s ease, box-shadow 0.05s ease;
+            cursor: pointer;
         }
-        .pixel-btn:active {
+        .pixel-btn:active,
+        .pixel-btn.pressed {
             transform: translate(2px, 2px);
             box-shadow: inset 2px 2px 0px #181622, inset -2px -2px 0px #434059, 1px 1px 0px rgba(0,0,0,0.6);
             background-color: #201e2c;
+        }
+        /* スマホ用D-Padを大きく */
+        .dpad-btn {
+            width: 64px;
+            height: 64px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 22px;
+            font-weight: bold;
+            touch-action: manipulation;
+        }
+        @media (min-width: 768px) {
+            .dpad-btn {
+                width: 52px;
+                height: 52px;
+                font-size: 18px;
+            }
         }
         ::-webkit-scrollbar {
             width: 6px;
@@ -51,903 +78,848 @@
             background: #434059;
             border: 2px solid #15141c;
         }
+        /* ログを見やすく */
+        #log-area {
+            max-height: 90px;
+            overflow-y: auto;
+            font-size: 11px;
+            line-height: 1.4;
+        }
+        @media (max-width: 640px) {
+            #log-area {
+                max-height: 70px;
+                font-size: 10px;
+            }
+        }
     </style>
 </head>
-<body class="h-screen w-screen flex flex-col justify-between p-2 md:p-3 max-w-5xl mx-auto box-border overflow-hidden">
-    <header class="w-full pixel-box p-2.5 mb-2 flex flex-row justify-between items-center bg-[#15141c] shrink-0">
+<body class="h-[100dvh] w-screen flex flex-col p-1.5 md:p-3 max-w-5xl mx-auto box-border overflow-hidden">
+
+    <!-- Header -->
+    <header class="w-full pixel-box p-2 mb-1.5 flex flex-row justify-between items-center bg-[#15141c] shrink-0">
         <div class="flex items-center space-x-2">
-            <div class="w-8 h-8 md:w-9 md:h-9 bg-[#c23b22] border-2 border-[#f3efe6] flex items-center justify-center text-lg shadow">⚔️</div>
+            <div class="w-7 h-7 md:w-9 md:h-9 bg-[#c23b22] border-2 border-[#f3efe6] flex items-center justify-center text-base shadow">⚔️</div>
             <div>
                 <h1 class="text-sm md:text-lg text-[#f39c38] font-bold tracking-widest">PIXEL QUEST</h1>
-                <p class="text-[10px] md:text-xs text-[#8c88a3]">本格レトロダンジョンRPG</p>
+                <p class="text-[9px] md:text-xs text-[#8c88a3]">本格レトロダンジョンRPG</p>
             </div>
         </div>
-        <div class="flex items-center space-x-2">
-            <div id="floor-indicator" class="pixel-box-sm px-2.5 py-1 text-[#3ec9c9] text-xs md:text-sm font-bold tracking-wider">
+        <div class="flex items-center space-x-1.5">
+            <div id="floor-indicator" class="pixel-box-sm px-2 py-1 text-[#3ec9c9] text-xs font-bold tracking-wider">
                 地下 1 階
             </div>
             <button onclick="toggleSound()" id="sound-btn" class="pixel-btn px-2 py-1 text-xs text-[#f3efe6] font-bold">🔊 ON</button>
         </div>
     </header>
 
-    <main class="w-full grid grid-cols-1 md:grid-cols-12 gap-2.5 flex-grow overflow-hidden mb-2 min-h-0">
+    <main class="w-full flex flex-col md:grid md:grid-cols-12 gap-1.5 flex-grow overflow-hidden min-h-0">
         
-        <!-- Left Section: 広めに -->
-        <section class="md:col-span-7 pixel-box p-3 flex flex-col relative overflow-hidden min-h-0">
-            <div class="flex justify-between items-center mb-2 border-b border-[#2a2838] pb-1.5 shrink-0">
-                <div id="view-title" class="text-xs md:text-sm font-bold text-[#f39c38] tracking-wider">
+        <!-- Left: Map + D-Pad -->
+        <section class="md:col-span-7 pixel-box p-2 flex flex-col relative overflow-hidden min-h-0 flex-grow">
+            <div class="flex justify-between items-center mb-1 border-b border-[#2a2838] pb-1 shrink-0">
+                <div id="view-title" class="text-xs font-bold text-[#f39c38] tracking-wider">
                     地下ダンジョン 探索中
                 </div>
-                <div class="text-[11px] text-[#8c88a3]">位置: (<span id="pos-x">1</span>, <span id="pos-y">1</span>)</div>
+                <div class="text-[10px] text-[#8c88a3]">位置: (<span id="pos-x">1</span>, <span id="pos-y">1</span>)</div>
             </div>
 
-            <!-- Canvas 枠いっぱい -->
-            <div id="canvas-container" class="w-full flex-1 bg-[#0b0a10] border-2 border-[#2a2838] flex items-center justify-center relative overflow-hidden shadow-inner min-h-0">
-                <canvas id="gameCanvas" width="320" height="320" class="w-full h-full object-contain"></canvas>
+            <!-- Canvas -->
+            <div id="canvas-container" class="w-full flex-1 bg-[#0b0a10] border-2 border-[#2a2838] flex items-center justify-center relative overflow-hidden shadow-inner min-h-[180px]">
+                <canvas id="gameCanvas" width="320" height="320" class="w-full h-full object-contain max-h-full"></canvas>
                 
-                <!-- Battle Screen Overlay -->
-                <div id="battle-overlay" class="absolute inset-0 bg-[#121118]/98 flex flex-col justify-between p-3 hidden z-10">
+                <!-- Battle Overlay -->
+                <div id="battle-overlay" class="absolute inset-0 bg-[#121118]/98 flex flex-col justify-between p-2.5 hidden z-10">
                     <div class="flex justify-between items-center bg-[#1b1924] p-2 border border-[#2a2838]">
-                        <div id="monster-name" class="text-[#e84848] font-bold text-xs md:text-sm">モンスターが現れた！</div>
-                        <div id="monster-hp-container" class="text-[11px] md:text-xs">
+                        <div id="monster-name" class="text-[#e84848] font-bold text-xs">モンスターが現れた！</div>
+                        <div id="monster-hp-container" class="text-[11px]">
                             HP: <span id="monster-hp-text" class="text-[#e84848] font-bold">30 / 30</span>
                         </div>
                     </div>
-                    
                     <div class="flex flex-col items-center justify-center my-auto">
-                        <div id="monster-svg-container" class="w-20 h-20 mb-2 flex items-center justify-center bg-[#0b0a10] border-2 border-[#2a2838] p-1">
-                        </div>
-                        <div id="monster-flavor" class="text-[10px] md:text-xs text-[#8c88a3] text-center px-2">魔物の気配が漂っている…</div>
+                        <div id="monster-svg-container" class="w-16 h-16 mb-1.5 flex items-center justify-center bg-[#0b0a10] border-2 border-[#2a2838] p-1"></div>
+                        <div id="monster-flavor" class="text-[10px] text-[#8c88a3] text-center px-2">魔物の気配が漂っている…</div>
                     </div>
                     <div class="grid grid-cols-2 gap-1.5">
-                        <button onclick="battleAction('attack')" class="pixel-btn text-[#e84848] font-bold py-2 px-1 text-xs md:text-sm">
-                            ⚔️ たたかう
-                        </button>
-                        <button onclick="battleAction('skill')" class="pixel-btn text-[#a852fb] font-bold py-2 px-1 text-xs md:text-sm">
-                            ✨ 必殺技
-                        </button>
-                        <button onclick="battleAction('potion')" class="pixel-btn text-[#3ebf73] font-bold py-2 px-1 text-xs md:text-sm">
-                            🧪 薬草
-                        </button>
-                        <button onclick="battleAction('run')" class="pixel-btn text-[#8c88a3] font-bold py-2 px-1 text-xs md:text-sm">
-                            🏃 逃走
-                        </button>
+                        <button onclick="battleAction('attack')" class="pixel-btn text-[#e84848] font-bold py-2.5 text-xs">⚔️ たたかう</button>
+                        <button onclick="battleAction('skill')" class="pixel-btn text-[#a852fb] font-bold py-2.5 text-xs">✨ 必殺技</button>
+                        <button onclick="battleAction('potion')" class="pixel-btn text-[#3ebf73] font-bold py-2.5 text-xs">🧪 薬草</button>
+                        <button onclick="battleAction('run')" class="pixel-btn text-[#8c88a3] font-bold py-2.5 text-xs">🏃 逃走</button>
                     </div>
                 </div>
 
-                <!-- Shop Screen Overlay -->
-                <div id="shop-overlay" class="absolute inset-0 bg-[#121118]/98 flex flex-col justify-between p-3 hidden z-20">
-                    <div class="flex justify-between items-center border-b border-[#2a2838] pb-2">
-                        <h3 class="text-[#f39c38] font-bold text-xs md:text-sm">🏪 冒険者ギルドの道具屋</h3>
-                        <button onclick="closeModal('shop-overlay')" class="pixel-btn px-3 py-1 text-xs text-[#f3efe6]">✕ 閉じる</button>
+                <!-- Shop / Item / Equip / Action overlays (簡略のため同じ構造) -->
+                <div id="shop-overlay" class="absolute inset-0 bg-[#121118]/98 flex flex-col justify-between p-2.5 hidden z-20">
+                    <div class="flex justify-between items-center border-b border-[#2a2838] pb-1.5">
+                        <h3 class="text-[#f39c38] font-bold text-xs">🏪 冒険者ギルドの道具屋</h3>
+                        <button onclick="closeModal('shop-overlay')" class="pixel-btn px-2.5 py-1 text-xs">✕ 閉じる</button>
                     </div>
-                    <div class="flex-grow overflow-y-auto space-y-2 my-2 pr-1 text-xs" id="shop-items-list">
-                    </div>
-                    <div class="text-[10px] text-[#8c88a3] bg-[#1b1924] p-2 border border-[#2a2838]">
-                        武器や防具を購入すると自動的に装備され強化されます！
-                    </div>
+                    <div class="flex-grow overflow-y-auto space-y-1.5 my-1.5 pr-1 text-xs" id="shop-items-list"></div>
+                    <div class="text-[10px] text-[#8c88a3] bg-[#1b1924] p-1.5 border border-[#2a2838]">武器や防具を購入すると自動的に装備されます</div>
                 </div>
 
-                <!-- Item Use Overlay -->
-                <div id="item-overlay" class="absolute inset-0 bg-[#121118]/98 flex flex-col justify-between p-3 hidden z-20">
-                    <div class="flex justify-between items-center border-b border-[#2a2838] pb-2">
-                        <h3 class="text-[#3ebf73] font-bold text-xs md:text-sm">🎒 アイテム一覧</h3>
-                        <button onclick="closeModal('item-overlay')" class="pixel-btn px-3 py-1 text-xs text-[#f3efe6]">✕ 閉じる</button>
+                <div id="item-overlay" class="absolute inset-0 bg-[#121118]/98 flex flex-col justify-between p-2.5 hidden z-20">
+                    <div class="flex justify-between items-center border-b border-[#2a2838] pb-1.5">
+                        <h3 class="text-[#3ebf73] font-bold text-xs">🎒 アイテム一覧</h3>
+                        <button onclick="closeModal('item-overlay')" class="pixel-btn px-2.5 py-1 text-xs">✕ 閉じる</button>
                     </div>
-                    <div class="flex-grow overflow-y-auto space-y-2 my-2 pr-1 text-xs" id="modal-inventory-list">
-                    </div>
-                    <div class="text-[10px] text-[#8c88a3] bg-[#1b1924] p-2 border border-[#2a2838]">
-                        冒険中に減った体力を薬草で回復しましょう。
-                    </div>
+                    <div class="flex-grow overflow-y-auto space-y-1.5 my-1.5 pr-1 text-xs" id="modal-inventory-list"></div>
+                    <div class="text-[10px] text-[#8c88a3] bg-[#1b1924] p-1.5 border border-[#2a2838]">薬草で体力を回復しましょう</div>
                 </div>
 
-                <!-- Equipment Overlay -->
-                <div id="equip-overlay" class="absolute inset-0 bg-[#121118]/98 flex flex-col justify-between p-3 hidden z-20">
-                    <div class="flex justify-between items-center border-b border-[#2a2838] pb-2">
-                        <h3 class="text-[#f39c38] font-bold text-xs md:text-sm">🛡️ 装備の着せ替え</h3>
-                        <button onclick="closeModal('equip-overlay')" class="pixel-btn px-3 py-1 text-xs text-[#f3efe6]">✕ 閉じる</button>
+                <div id="equip-overlay" class="absolute inset-0 bg-[#121118]/98 flex flex-col justify-between p-2.5 hidden z-20">
+                    <div class="flex justify-between items-center border-b border-[#2a2838] pb-1.5">
+                        <h3 class="text-[#f39c38] font-bold text-xs">🛡️ 装備の着せ替え</h3>
+                        <button onclick="closeModal('equip-overlay')" class="pixel-btn px-2.5 py-1 text-xs">✕ 閉じる</button>
                     </div>
-                    <div class="flex-grow overflow-y-auto space-y-2 my-2 pr-1 text-xs" id="modal-equip-list">
-                    </div>
-                    <div class="text-[10px] text-[#8c88a3] bg-[#1b1924] p-2 border border-[#2a2838]">
-                        所持している武器や防具を切り替えてステータスを調整できます。
-                    </div>
+                    <div class="flex-grow overflow-y-auto space-y-1.5 my-1.5 pr-1 text-xs" id="modal-equip-list"></div>
+                    <div class="text-[10px] text-[#8c88a3] bg-[#1b1924] p-1.5 border border-[#2a2838]">所持している装備を切り替えられます</div>
                 </div>
 
-                <!-- Action Menu Overlay -->
-                <div id="action-overlay" class="absolute inset-0 bg-[#121118]/98 flex flex-col justify-between p-3 hidden z-20">
-                    <div class="flex justify-between items-center border-b border-[#2a2838] pb-2">
-                        <h3 class="text-[#f39c38] font-bold text-xs md:text-sm">⚙️ アクションメニュー</h3>
-                        <button onclick="closeModal('action-overlay')" class="pixel-btn px-3 py-1 text-xs text-[#f3efe6]">✕ 閉じる</button>
+                <div id="action-overlay" class="absolute inset-0 bg-[#121118]/98 flex flex-col justify-between p-2.5 hidden z-20">
+                    <div class="flex justify-between items-center border-b border-[#2a2838] pb-1.5">
+                        <h3 class="text-[#f39c38] font-bold text-xs">⚙️ アクションメニュー</h3>
+                        <button onclick="closeModal('action-overlay')" class="pixel-btn px-2.5 py-1 text-xs">✕ 閉じる</button>
                     </div>
-                    <div class="flex-grow flex flex-col justify-center gap-3 my-3">
-                        <button onclick="closeModal('action-overlay'); openShop();" class="pixel-btn text-[#f39c38] font-bold py-3 text-sm flex items-center justify-center space-x-2">
+                    <div class="flex-grow flex flex-col justify-center gap-2.5 my-2">
+                        <button onclick="closeModal('action-overlay'); openShop();" class="pixel-btn text-[#f39c38] font-bold py-3 text-sm flex items-center justify-center gap-2">
                             <span class="text-lg">🏪</span><span>道具屋</span>
                         </button>
-                        <button onclick="closeModal('action-overlay'); openItemModal();" class="pixel-btn text-[#3ebf73] font-bold py-3 text-sm flex items-center justify-center space-x-2">
+                        <button onclick="closeModal('action-overlay'); openItemModal();" class="pixel-btn text-[#3ebf73] font-bold py-3 text-sm flex items-center justify-center gap-2">
                             <span class="text-lg">🎒</span><span>アイテム</span>
                         </button>
-                        <button onclick="closeModal('action-overlay'); openEquipModal();" class="pixel-btn text-[#a852fb] font-bold py-3 text-sm flex items-center justify-center space-x-2">
+                        <button onclick="closeModal('action-overlay'); openEquipModal();" class="pixel-btn text-[#a852fb] font-bold py-3 text-sm flex items-center justify-center gap-2">
                             <span class="text-lg">🛡️</span><span>装備着せ替え</span>
                         </button>
                     </div>
-                    <div class="text-[10px] text-[#8c88a3] bg-[#1b1924] p-2 border border-[#2a2838]">
-                        冒険の準備を整えましょう。
-                    </div>
+                    <div class="text-[10px] text-[#8c88a3] bg-[#1b1924] p-1.5 border border-[#2a2838]">冒険の準備を整えましょう</div>
                 </div>
 
-                <!-- Save Modal Overlay -->
                 <div id="save-overlay" class="absolute inset-0 bg-[#121118]/95 flex flex-col items-center justify-center p-4 hidden z-30">
-                    <div class="pixel-box p-5 w-full max-w-[220px] text-center space-y-3">
-                        <h3 id="save-modal-title" class="text-xs md:text-sm text-[#3ebf73] font-bold">💾 セーブ処理中</h3>
-                        <div id="save-modal-spinner" class="text-2xl animate-bounce my-1">⏳</div>
-                        <p id="save-modal-desc" class="text-[10px] md:text-xs text-[#8c88a3]">データを保存しています...</p>
+                    <div class="pixel-box p-4 w-full max-w-[200px] text-center space-y-2">
+                        <h3 id="save-modal-title" class="text-xs text-[#3ebf73] font-bold">💾 セーブ処理中</h3>
+                        <div id="save-modal-spinner" class="text-2xl animate-bounce">⏳</div>
+                        <p id="save-modal-desc" class="text-[10px] text-[#8c88a3]">データを保存しています...</p>
                     </div>
                 </div>
             </div>
 
-            <!-- Virtual D-Pad -->
-            <div class="w-full grid grid-cols-3 gap-1.5 mt-2 max-w-[200px] mx-auto select-none shrink-0">
-                <div></div>
-                <button ontouchstart="handleTouchMove(0, -1, event)" onclick="movePlayer(0, -1)" class="pixel-btn py-2.5 text-center text-sm font-bold active:bg-[#434059]">▲</button>
-                <div></div>
-                <button ontouchstart="handleTouchMove(-1, 0, event)" onclick="movePlayer(-1, 0)" class="pixel-btn py-2.5 text-center text-sm font-bold active:bg-[#434059]">◀</button>
-                <button ontouchstart="handleTouchMove(0, 1, event)" onclick="movePlayer(0, 1)" class="pixel-btn py-2.5 text-center text-sm font-bold active:bg-[#434059]">▼</button>
-                <button ontouchstart="handleTouchMove(1, 0, event)" onclick="movePlayer(1, 0)" class="pixel-btn py-2.5 text-center text-sm font-bold active:bg-[#434059]">▶</button>
+            <!-- 改善版 D-Pad（大きくて押しやすい） -->
+            <div class="w-full flex justify-center mt-2 shrink-0 select-none">
+                <div class="grid grid-cols-3 gap-1.5">
+                    <div></div>
+                    <button class="pixel-btn dpad-btn" 
+                            ontouchstart="handleDpad(0, -1, event)" 
+                            onmousedown="handleDpad(0, -1, event)"
+                            ontouchend="releaseDpad(event)"
+                            onmouseup="releaseDpad(event)"
+                            onmouseleave="releaseDpad(event)">▲</button>
+                    <div></div>
+                    <button class="pixel-btn dpad-btn" 
+                            ontouchstart="handleDpad(-1, 0, event)" 
+                            onmousedown="handleDpad(-1, 0, event)"
+                            ontouchend="releaseDpad(event)"
+                            onmouseup="releaseDpad(event)"
+                            onmouseleave="releaseDpad(event)">◀</button>
+                    <button class="pixel-btn dpad-btn" 
+                            ontouchstart="handleDpad(0, 1, event)" 
+                            onmousedown="handleDpad(0, 1, event)"
+                            ontouchend="releaseDpad(event)"
+                            onmouseup="releaseDpad(event)"
+                            onmouseleave="releaseDpad(event)">▼</button>
+                    <button class="pixel-btn dpad-btn" 
+                            ontouchstart="handleDpad(1, 0, event)" 
+                            onmousedown="handleDpad(1, 0, event)"
+                            ontouchend="releaseDpad(event)"
+                            onmouseup="releaseDpad(event)"
+                            onmouseleave="releaseDpad(event)">▶</button>
+                </div>
             </div>
         </section>
 
-        <!-- Right Section -->
-        <section class="md:col-span-5 pixel-box p-3 flex flex-col justify-between space-y-2 overflow-hidden">
-            <div class="space-y-2 overflow-y-auto pr-1">
-                <!-- Name & Level -->
-                <div class="flex flex-col space-y-1 bg-[#1b1924] p-2.5 border border-[#2a2838]">
+        <!-- Right: Status -->
+        <section class="md:col-span-5 pixel-box p-2 flex flex-col justify-between space-y-1.5 overflow-hidden shrink-0 md:shrink">
+            <div class="space-y-1.5 overflow-y-auto pr-0.5">
+                <!-- Name -->
+                <div class="flex flex-col space-y-1 bg-[#1b1924] p-2 border border-[#2a2838]">
                     <div class="flex justify-between items-center">
-                        <label class="text-[11px] text-[#8c88a3] font-bold">冒険者の名前</label>
-                        <span id="player-level" class="bg-[#1f382a] text-[#3ebf73] text-[10px] px-2 py-0.5 border border-[#3ebf73]/40 font-bold">Lv.1</span>
+                        <label class="text-[10px] text-[#8c88a3] font-bold">冒険者の名前</label>
+                        <span id="player-level" class="bg-[#1f382a] text-[#3ebf73] text-[10px] px-1.5 py-0.5 border border-[#3ebf73]/40 font-bold">Lv.1</span>
                     </div>
-                    <div class="flex space-x-2 mt-0.5">
-                        <input type="text" id="player-name-input" value="エリック" maxlength="10" class="w-full bg-[#121118] border-2 border-[#434059] px-2.5 py-1 text-xs text-[#f3efe6] font-bold focus:outline-none focus:border-[#f39c38]">
-                        <button onclick="updatePlayerName()" class="pixel-btn px-3 py-1 text-[11px] text-[#f39c38] font-bold">変更</button>
-                    </div>
-                </div>
-
-                <!-- Gauges -->
-                <div class="bg-[#1b1924] p-2.5 border border-[#2a2838] space-y-2">
-                    <div>
-                        <div class="flex justify-between text-[11px] md:text-xs mb-0.5">
-                            <span class="text-[#e84848] font-bold">体力 (HP)</span>
-                            <span id="player-hp-text">50 / 50</span>
-                        </div>
-                        <div class="w-full bg-[#121118] h-4 p-0.5 border border-[#434059]">
-                            <div id="player-hp-bar" class="bg-[#e84848] h-full transition-all duration-300" style="width: 100%;"></div>
-                        </div>
-                    </div>
-                    <div>
-                        <div class="flex justify-between text-[11px] md:text-xs mb-0.5">
-                            <span class="text-[#a852fb] font-bold">魔力 (MP)</span>
-                            <span id="player-mp-text">20 / 20</span>
-                        </div>
-                        <div class="w-full bg-[#121118] h-3.5 p-0.5 border border-[#434059]">
-                            <div id="player-mp-bar" class="bg-[#a852fb] h-full transition-all duration-300" style="width: 100%;"></div>
-                        </div>
-                    </div>
-                    <div>
-                        <div class="flex justify-between text-[11px] md:text-xs mb-0.5">
-                            <span class="text-[#f39c38] font-bold">経験値 (EXP)</span>
-                            <span id="player-exp-text">0 / 30</span>
-                        </div>
-                        <div class="w-full bg-[#121118] h-3.5 p-0.5 border border-[#434059]">
-                            <div id="player-exp-bar" class="bg-[#f39c38] h-full transition-all duration-300" style="width: 0%;"></div>
-                        </div>
+                    <div class="flex space-x-1.5">
+                        <input type="text" id="player-name-input" value="エリック" maxlength="10" 
+                               class="w-full bg-[#121118] border-2 border-[#434059] px-2 py-1 text-xs text-[#f3efe6] font-bold focus:outline-none focus:border-[#f39c38]">
+                        <button onclick="updatePlayerName()" class="pixel-btn px-2.5 py-1 text-[10px] text-[#f39c38] font-bold">変更</button>
                     </div>
                 </div>
 
-                <!-- Stats & Gold -->
-                <div class="grid grid-cols-2 gap-2 bg-[#1b1924] p-2.5 border border-[#2a2838] text-xs">
-                    <div>攻撃力: <span id="stat-atk" class="text-[#f39c38] font-bold">12</span></div>
-                    <div>防御力: <span id="stat-def" class="text-[#3ec9c9] font-bold">5</span></div>
-                    <div class="col-span-2 pt-1.5 border-t border-[#2a2838]">所持金: <span id="stat-gold" class="text-[#f1c40f] font-bold text-sm">100</span> G</div>
+                <!-- Stats -->
+                <div class="bg-[#1b1924] p-2 border border-[#2a2838] space-y-1.5 text-xs">
+                    <div>
+                        <div class="flex justify-between text-[10px] mb-0.5">
+                            <span class="text-[#e84848]">体力 (HP)</span>
+                            <span id="hp-text">50 / 50</span>
+                        </div>
+                        <div class="w-full h-2 bg-[#121118] border border-[#2a2838]">
+                            <div id="hp-bar" class="h-full bg-[#e84848]" style="width:100%"></div>
+                        </div>
+                    </div>
+                    <div>
+                        <div class="flex justify-between text-[10px] mb-0.5">
+                            <span class="text-[#a852fb]">魔力 (MP)</span>
+                            <span id="mp-text">20 / 20</span>
+                        </div>
+                        <div class="w-full h-2 bg-[#121118] border border-[#2a2838]">
+                            <div id="mp-bar" class="h-full bg-[#a852fb]" style="width:100%"></div>
+                        </div>
+                    </div>
+                    <div>
+                        <div class="flex justify-between text-[10px] mb-0.5">
+                            <span class="text-[#f39c38]">経験値 (EXP)</span>
+                            <span id="exp-text">0 / 30</span>
+                        </div>
+                        <div class="w-full h-1.5 bg-[#121118] border border-[#2a2838]">
+                            <div id="exp-bar" class="h-full bg-[#f39c38]" style="width:0%"></div>
+                        </div>
+                    </div>
+                    <div class="flex justify-between pt-1 text-[11px]">
+                        <span>攻撃力: <span id="atk-text" class="text-[#e84848]">12</span></span>
+                        <span>防御力: <span id="def-text" class="text-[#3ec9c9]">5</span></span>
+                    </div>
+                    <div class="text-[11px]">所持金: <span id="gold-text" class="text-[#f1c40f]">100 G</span></div>
                 </div>
 
-                <!-- Equipment Summary -->
-                <div class="bg-[#1b1924] p-2.5 border border-[#2a2838] text-xs space-y-1">
-                    <div class="text-[#8c88a3] font-bold mb-0.5">現在の装備</div>
-                    <div class="flex justify-between">
-                        <span class="text-[#8c88a3]">武器:</span> <span id="eq-weapon" class="text-[#f39c38] font-bold">ヒノキの棒 (+0)</span>
-                    </div>
-                    <div class="flex justify-between">
-                        <span class="text-[#8c88a3]">防具:</span> <span id="eq-armor" class="text-[#3ec9c9] font-bold">布の服 (+0)</span>
-                    </div>
+                <!-- Equipment -->
+                <div class="bg-[#1b1924] p-2 border border-[#2a2838] text-[11px]">
+                    <div class="text-[#8c88a3] text-[10px] mb-1">現在の装備</div>
+                    <div>武器: <span id="weapon-text" class="text-[#f39c38]">ヒノキの棒 (+0)</span></div>
+                    <div>防具: <span id="armor-text" class="text-[#3ec9c9]">布の服 (+0)</span></div>
                 </div>
             </div>
 
-            <div class="space-y-2 pt-2 border-t border-[#2a2838] shrink-0">
-                <button onclick="openActionMenu()" class="pixel-btn w-full text-[#f39c38] font-bold py-3 px-2 text-sm text-center flex items-center justify-center space-x-2">
-                    <span class="text-lg">⚙️</span><span>アクション</span>
+            <!-- Action Buttons -->
+            <div class="space-y-1.5 shrink-0">
+                <button onclick="openActionMenu()" class="w-full pixel-btn text-[#f39c38] font-bold py-2.5 text-sm flex items-center justify-center gap-2">
+                    <span>⚙️</span><span>アクション</span>
                 </button>
-                <button onclick="triggerSave()" class="pixel-btn w-full text-[#3ec9c9] font-bold py-2.5 px-2 text-xs text-center flex items-center justify-center space-x-2">
-                    <span class="text-base">💾</span><span>ゲームデータをセーブする</span>
+                <button onclick="saveGame()" class="w-full pixel-btn text-[#3ec9c9] font-bold py-2 text-xs flex items-center justify-center gap-2">
+                    <span>💾</span><span>ゲームデータをセーブする</span>
                 </button>
             </div>
         </section>
     </main>
 
-    <section class="w-full pixel-box p-2.5 shrink-0">
-        <div class="flex justify-between items-center border-b border-[#2a2838] pb-1 mb-1">
-            <span class="text-xs text-[#3ec9c9] font-bold">📜 冒険の記録</span>
-            <button onclick="clearLog()" class="text-[10px] text-[#8c88a3] hover:text-[#f3efe6] underline py-0.5 px-1">履歴消去</button>
+    <!-- Log -->
+    <section class="w-full pixel-box p-2 mt-1.5 shrink-0">
+        <div class="flex justify-between items-center mb-1">
+            <div class="text-[11px] text-[#f39c38] font-bold flex items-center gap-1">📜 冒険の記録</div>
+            <button onclick="clearLog()" class="text-[10px] text-[#8c88a3]">履歴消去</button>
         </div>
-        <div id="game-log" class="bg-[#0b0a10] p-2 border border-[#2a2838] h-16 md:h-20 overflow-y-auto text-[11px] md:text-xs space-y-0.5 font-mono">
-            <div class="text-[#f39c38]">== レトロクエストへようこそ ==</div>
-            <div class="text-[#8c88a3]">地下1階の探索が始まります。階段を見つけて最深部を目指せ！</div>
-        </div>
+        <div id="log-area" class="text-[#c5c0d4] space-y-0.5"></div>
     </section>
 
-    <script>
-        const canvas = document.getElementById('gameCanvas');
-        const ctx = canvas.getContext('2d');
-        
-        const TILE_SIZE = 32;
-        const MAP_WIDTH = 10;
-        const MAP_HEIGHT = 10;
-        let soundEnabled = true;
+<script>
+    // =====================
+    // ゲーム定数・状態
+    // =====================
+    const MAP_WIDTH = 11;
+    const MAP_HEIGHT = 11;
+    const TILE_SIZE = 29; // 少し調整
 
-        let player = {
-            name: "エリック",
-            level: 1,
-            hp: 50,
-            maxHp: 50,
-            mp: 20,
-            maxMp: 20,
-            atk: 12,
-            def: 5,
-            exp: 0,
-            nextExp: 30,
-            gold: 120,
-            potions: 3,
-            x: 1,
-            y: 1,
-            weapon: { name: "ヒノキの棒", atkBonus: 0 },
-            armor: { name: "布の服", defBonus: 0 },
-            inventoryWeapons: [{ name: "ヒノキの棒", atkBonus: 0 }],
-            inventoryArmors: [{ name: "布の服", defBonus: 0 }]
-        };
+    let canvas, ctx;
+    let mapData = [];
+    let currentFloor = 1;
+    let gameState = 0; // 0:探索 1:戦闘
+    let soundEnabled = true;
+    let currentMonster = null;
 
-        let gameState = 0; // 0: Exploring, 1: Battling, 2: Modals
-        let currentFloor = 1;
-        let mapData = [];
-        let currentMonster = null;
+    const player = {
+        name: "エリック",
+        x: 1, y: 1,
+        level: 1,
+        hp: 50, maxHp: 50,
+        mp: 20, maxMp: 20,
+        exp: 0, nextExp: 30,
+        atk: 12, def: 5,
+        gold: 100,
+        potions: 2,
+        weapon: { name: "ヒノキの棒", atkBonus: 0 },
+        armor: { name: "布の服", defBonus: 0 },
+        inventoryWeapons: [],
+        inventoryArmors: []
+    };
 
-        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-        function playTone(freq, duration, type = 'square') {
-            if (!soundEnabled) return;
-            try {
-                if (audioCtx.state === 'suspended') audioCtx.resume();
-                const osc = audioCtx.createOscillator();
-                const gain = audioCtx.createGain();
-                osc.type = type;
-                osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
-                gain.gain.setValueAtTime(0.08, audioCtx.currentTime);
-                gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + duration);
-                osc.connect(gain);
-                gain.connect(audioCtx.destination);
-                osc.start();
-                osc.stop(audioCtx.currentTime + duration);
-            } catch (e) {}
+    // =====================
+    // 初期化
+    // =====================
+    window.onload = () => {
+        canvas = document.getElementById('gameCanvas');
+        ctx = canvas.getContext('2d');
+        loadGame();
+        generateMap();
+        drawMap();
+        updateStatsUI();
+        logMessage("== レトロクエストへようこそ ==");
+        logMessage("地下1階の探索が始まります。階段を見つけて最深部を目指せ！");
+        logMessage(`地下ダンジョンへようこそ、${player.name}！「アクション」から道具屋・アイテム・装備変更が可能です。`);
+    };
+
+    // =====================
+    // D-Pad改善（押しやすさ最優先）
+    // =====================
+    let lastMoveTime = 0;
+    const MOVE_COOLDOWN = 140; // 連打防止
+
+    function handleDpad(dx, dy, e) {
+        e.preventDefault();
+        e.stopPropagation();
+        const btn = e.currentTarget;
+        btn.classList.add('pressed');
+
+        const now = Date.now();
+        if (now - lastMoveTime < MOVE_COOLDOWN) return;
+        lastMoveTime = now;
+
+        movePlayer(dx, dy);
+    }
+
+    function releaseDpad(e) {
+        if (e && e.currentTarget) {
+            e.currentTarget.classList.remove('pressed');
         }
-        function playSound(type) {
-            if (type === 'step') playTone(120, 0.04, 'triangle');
-            else if (type === 'hit') playTone(90, 0.12, 'sawtooth');
-            else if (type === 'victory') {
-                setTimeout(() => playTone(350, 0.08), 0);
-                setTimeout(() => playTone(450, 0.08), 80);
-                setTimeout(() => playTone(650, 0.16), 160);
-            }
-            else if (type === 'level_up') {
-                setTimeout(() => playTone(523, 0.1), 0);
-                setTimeout(() => playTone(659, 0.1), 100);
-                setTimeout(() => playTone(783, 0.2), 200);
-            }
-            else if (type === 'item') {
-                setTimeout(() => playTone(400, 0.08), 0);
-                setTimeout(() => playTone(800, 0.15), 80);
-            }
-        }
+    }
 
-        function triggerSave() {
-            if (gameState !== 0) return;
-            const overlay = document.getElementById('save-overlay');
-            const title = document.getElementById('save-modal-title');
-            const spinner = document.getElementById('save-modal-spinner');
-            const desc = document.getElementById('save-modal-desc');
-            title.innerText = "💾 セーブ処理中";
-            spinner.innerText = "⏳";
-            spinner.style.display = "block";
-            desc.innerText = "冒険のデータをブラウザに保存しています...";
-            overlay.classList.remove('hidden');
-            setTimeout(() => {
-                const saveData = { player, currentFloor, mapData };
-                localStorage.setItem('pixel_quest_save_v2', JSON.stringify(saveData));
-                title.innerText = "🎉 セーブ完了！";
-                spinner.innerText = "✨";
-                desc.innerText = "データの保存が正常に完了しました。";
-                playSound('level_up');
-                setTimeout(() => {
-                    overlay.classList.add('hidden');
-                    logMessage("💾 冒険の記録をセーブしました。");
-                }, 1000);
-            }, 800);
-        }
-
-        function loadGame() {
-            const saved = localStorage.getItem('pixel_quest_save_v2') || localStorage.getItem('pixel_quest_save');
-            if (saved) {
-                try {
-                    const data = JSON.parse(saved);
-                    player = data.player;
-                    if (player.mp === undefined) { player.mp = 20; player.maxMp = 20; }
-                    if (!player.inventoryWeapons) player.inventoryWeapons = [player.weapon || { name: "ヒノキの棒", atkBonus: 0 }];
-                    if (!player.inventoryArmors) player.inventoryArmors = [player.armor || { name: "布の服", defBonus: 0 }];
-                    currentFloor = data.currentFloor || 1;
-                    mapData = data.mapData || [];
-                    document.getElementById('player-name-input').value = player.name;
-                    if (mapData.length === 0) generateMap();
-                    logMessage("📂 保存されたセーブデータをロードしました！");
-                } catch (e) {
-                    generateMap();
-                }
-            } else {
-                generateMap();
-            }
-        }
-
-        function generateMap() {
-            mapData = [];
-            for (let y = 0; y < MAP_HEIGHT; y++) {
-                let row = [];
-                for (let x = 0; x < MAP_WIDTH; x++) {
-                    if (x === 0 || y === 0 || x === MAP_WIDTH - 1 || y === MAP_HEIGHT - 1) {
-                        row.push(1);
-                    } else {
-                        let rand = Math.random();
-                        if (rand < 0.14) row.push(1);
-                        else if (rand < 0.21) row.push(3);
-                        else if (rand < 0.31) row.push(4);
-                        else row.push(0);
-                    }
-                }
-                mapData.push(row);
-            }
-            mapData[1][1] = 0;
-            mapData[1][2] = 0;
-            mapData[2][1] = 0;
-            mapData[2][2] = 0;
-
-            const reachable = new Set();
-            const queue = [{x: 1, y: 1}];
-            const visited = new Set(['1,1']);
-            const dirs = [[0,1],[0,-1],[1,0],[-1,0]];
-            while (queue.length) {
-                const {x, y} = queue.shift();
-                reachable.add(`${x},${y}`);
-                for (const [dx, dy] of dirs) {
-                    const nx = x + dx, ny = y + dy;
-                    const key = `${nx},${ny}`;
-                    if (nx > 0 && nx < MAP_WIDTH - 1 && ny > 0 && ny < MAP_HEIGHT - 1 &&
-                        mapData[ny][nx] !== 1 && !visited.has(key)) {
-                        visited.add(key);
-                        queue.push({x: nx, y: ny});
-                    }
+    // =====================
+    // マップ生成（少し改善）
+    // =====================
+    function generateMap() {
+        mapData = [];
+        for (let y = 0; y < MAP_HEIGHT; y++) {
+            let row = [];
+            for (let x = 0; x < MAP_WIDTH; x++) {
+                if (x === 0 || y === 0 || x === MAP_WIDTH - 1 || y === MAP_HEIGHT - 1) {
+                    row.push(1); // 壁
+                } else {
+                    let rand = Math.random();
+                    if (rand < 0.13) row.push(1);
+                    else if (rand < 0.20) row.push(3); // 宝箱
+                    else if (rand < 0.28) row.push(4); // 敵気配
+                    else row.push(0);
                 }
             }
+            mapData.push(row);
+        }
+        // スタート地点確保
+        mapData[1][1] = 0;
+        mapData[1][2] = 0;
+        mapData[2][1] = 0;
+        mapData[2][2] = 0;
 
-            const candidates = [];
-            for (let y = 1; y < MAP_HEIGHT - 1; y++) {
-                for (let x = 1; x < MAP_WIDTH - 1; x++) {
-                    if (mapData[y][x] !== 1 && !(x === 1 && y === 1) && reachable.has(`${x},${y}`)) {
-                        candidates.push({x, y});
-                    }
+        // 到達可能チェック
+        const reachable = new Set();
+        const queue = [{x: 1, y: 1}];
+        const visited = new Set(['1,1']);
+        const dirs = [[0,1],[0,-1],[1,0],[-1,0]];
+        while (queue.length) {
+            const {x, y} = queue.shift();
+            reachable.add(`${x},${y}`);
+            for (const [dx, dy] of dirs) {
+                const nx = x + dx, ny = y + dy;
+                const key = `${nx},${ny}`;
+                if (nx > 0 && nx < MAP_WIDTH - 1 && ny > 0 && ny < MAP_HEIGHT - 1 &&
+                    mapData[ny][nx] !== 1 && !visited.has(key)) {
+                    visited.add(key);
+                    queue.push({x: nx, y: ny});
                 }
             }
-            if (candidates.length === 0) {
-                mapData[MAP_HEIGHT - 2][MAP_WIDTH - 2] = 2;
-                mapData[MAP_HEIGHT - 2][MAP_WIDTH - 3] = 0;
-                mapData[MAP_HEIGHT - 3][MAP_WIDTH - 2] = 0;
-            } else {
-                const stair = candidates[Math.floor(Math.random() * candidates.length)];
-                mapData[stair.y][stair.x] = 2;
-            }
         }
 
-        function drawMap() {
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-            for (let y = 0; y < MAP_HEIGHT; y++) {
-                for (let x = 0; x < MAP_WIDTH; x++) {
-                    let tile = mapData[y][x];
-                    let px = x * TILE_SIZE;
-                    let py = y * TILE_SIZE;
-                    ctx.fillStyle = '#14121c';
-                    ctx.fillRect(px, py, TILE_SIZE, TILE_SIZE);
-                    ctx.strokeStyle = '#221f2e';
-                    ctx.strokeRect(px, py, TILE_SIZE, TILE_SIZE);
-                    if (tile === 1) {
-                        ctx.fillStyle = '#2a2838';
-                        ctx.fillRect(px + 2, py + 2, TILE_SIZE - 4, TILE_SIZE - 4);
-                        ctx.fillStyle = '#434059';
-                        ctx.fillRect(px + 6, py + 6, TILE_SIZE - 12, TILE_SIZE - 12);
-                    } else if (tile === 2) {
-                        ctx.fillStyle = '#f39c38';
-                        ctx.font = '16px monospace';
-                        ctx.fillText('🪜', px + 6, py + 22);
-                    } else if (tile === 3) {
-                        ctx.fillStyle = '#f1c40f';
-                        ctx.font = '16px monospace';
-                        ctx.fillText('📦', px + 6, py + 22);
-                    } else if (tile === 4) {
-                        ctx.fillStyle = 'rgba(232, 72, 72, 0.12)';
-                        ctx.fillRect(px + 4, py + 4, TILE_SIZE - 8, TILE_SIZE - 8);
-                    }
+        // 階段配置
+        const candidates = [];
+        for (let y = 1; y < MAP_HEIGHT - 1; y++) {
+            for (let x = 1; x < MAP_WIDTH - 1; x++) {
+                if (mapData[y][x] !== 1 && !(x === 1 && y === 1) && reachable.has(`${x},${y}`)) {
+                    candidates.push({x, y});
                 }
             }
-            let ppx = player.x * TILE_SIZE;
-            let ppy = player.y * TILE_SIZE;
-            ctx.fillStyle = '#3ebf73';
-            ctx.beginPath();
-            ctx.arc(ppx + TILE_SIZE/2, ppy + TILE_SIZE/2, 9, 0, Math.PI * 2);
-            ctx.fill();
-            ctx.strokeStyle = '#1d5e3c';
-            ctx.lineWidth = 2;
-            ctx.stroke();
-            ctx.font = '14px monospace';
-            ctx.fillText('🧙‍♂️', ppx + 6, ppy + 22);
         }
-
-        function handleTouchMove(dx, dy, e) {
-            e.preventDefault();
-            movePlayer(dx, dy);
+        if (candidates.length === 0) {
+            mapData[MAP_HEIGHT - 2][MAP_WIDTH - 2] = 2;
+            mapData[MAP_HEIGHT - 2][MAP_WIDTH - 3] = 0;
+            mapData[MAP_HEIGHT - 3][MAP_WIDTH - 2] = 0;
+        } else {
+            const stair = candidates[Math.floor(Math.random() * candidates.length)];
+            mapData[stair.y][stair.x] = 2;
         }
+    }
 
-        function movePlayer(dx, dy) {
-            if (gameState !== 0) return;
-            let newX = player.x + dx;
-            let newY = player.y + dy;
-            if (newX < 0 || newX >= MAP_WIDTH || newY < 0 || newY >= MAP_HEIGHT) return;
-            if (mapData[newY][newX] === 1) {
-                logMessage("壁に阻まれた。先に進めない。");
-                return;
+    function drawMap() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        for (let y = 0; y < MAP_HEIGHT; y++) {
+            for (let x = 0; x < MAP_WIDTH; x++) {
+                let tile = mapData[y][x];
+                let px = x * TILE_SIZE;
+                let py = y * TILE_SIZE;
+                ctx.fillStyle = '#14121c';
+                ctx.fillRect(px, py, TILE_SIZE, TILE_SIZE);
+                ctx.strokeStyle = '#221f2e';
+                ctx.strokeRect(px + 0.5, py + 0.5, TILE_SIZE - 1, TILE_SIZE - 1);
+
+                if (tile === 1) {
+                    ctx.fillStyle = '#2a2838';
+                    ctx.fillRect(px + 2, py + 2, TILE_SIZE - 4, TILE_SIZE - 4);
+                    ctx.fillStyle = '#434059';
+                    ctx.fillRect(px + 6, py + 6, TILE_SIZE - 12, TILE_SIZE - 12);
+                } else if (tile === 2) {
+                    ctx.font = '18px monospace';
+                    ctx.fillText('🪜', px + 5, py + 22);
+                } else if (tile === 3) {
+                    ctx.font = '16px monospace';
+                    ctx.fillText('📦', px + 6, py + 22);
+                } else if (tile === 4) {
+                    ctx.fillStyle = 'rgba(232, 72, 72, 0.18)';
+                    ctx.fillRect(px + 3, py + 3, TILE_SIZE - 6, TILE_SIZE - 6);
+                }
             }
-            player.x = newX;
-            player.y = newY;
+        }
+        // プレイヤー
+        let ppx = player.x * TILE_SIZE;
+        let ppy = player.y * TILE_SIZE;
+        ctx.fillStyle = '#3ebf73';
+        ctx.beginPath();
+        ctx.arc(ppx + TILE_SIZE/2, ppy + TILE_SIZE/2, 10, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = '#1d5e3c';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+        ctx.font = '15px monospace';
+        ctx.fillText('🧙‍♂️', ppx + 5, ppy + 22);
+    }
+
+    // =====================
+    // 移動
+    // =====================
+    function movePlayer(dx, dy) {
+        if (gameState !== 0) return;
+        let newX = player.x + dx;
+        let newY = player.y + dy;
+        if (newX < 0 || newX >= MAP_WIDTH || newY < 0 || newY >= MAP_HEIGHT) return;
+        if (mapData[newY][newX] === 1) {
+            logMessage("壁に阻まれた。先に進めない。");
             playSound('step');
-            let tileType = mapData[newY][newX];
-            if (tileType === 2) {
-                currentFloor++;
-                logMessage(`🎉 地下 ${currentFloor} 階へ階段を下りた！魔物たちがさらに凶暴になる。`);
-                playSound('level_up');
-                generateMap();
-                player.x = 1;
-                player.y = 1;
-            } else if (tileType === 3) {
-                mapData[newY][newX] = 0;
-                let goldReward = Math.floor(Math.random() * 25 * currentFloor) + 18;
-                player.gold += goldReward;
-                let bonusMsg = "";
-                if (Math.random() < 0.32) {
-                    player.potions++;
-                    bonusMsg = " ＆ 特製薬草を発見！";
-                    playSound('item');
-                } else {
-                    playSound('victory');
-                }
-                logMessage(`📦 宝箱を開けた！ ${goldReward} ゴールドを入手！${bonusMsg}`);
-                updateStatsUI();
-            } else if (tileType === 4 || Math.random() < 0.22) {
-                if (tileType === 4) mapData[newY][newX] = 0;
-                startBattle();
-            }
-            updateStatsUI();
-            drawMap();
+            return;
         }
+        player.x = newX;
+        player.y = newY;
+        playSound('step');
+        document.getElementById('pos-x').innerText = player.x;
+        document.getElementById('pos-y').innerText = player.y;
 
-        const monsterRoster = [
-            { 
-                name: "どくスライム", 
-                hp: 22, maxHp: 22, atk: 9, def: 2, exp: 14, gold: 16, 
-                flavor: "ネバネバした猛毒を持つ原色の魔物。",
-                svg: `<svg width="50" height="50" viewBox="0 0 16 16"><path fill="#3ebf73" d="M3 10h10v3H3z"/><path fill="#3ec9c9" d="M4 7h8v3H4z"/><path fill="#12ff52" d="M6 5h4v2H6z"/><circle cx="6" cy="8" r="1" fill="#000"/><circle cx="10" cy="8" r="1" fill="#000"/></svg>`
-            },
-            { 
-                name: "いたずらゴブリン", 
-                hp: 36, maxHp: 36, atk: 15, def: 4, exp: 24, gold: 32, 
-                flavor: "小回りの利く動きで旅人を翻弄する小鬼。",
-                svg: `<svg width="50" height="50" viewBox="0 0 16 16"><path fill="#c23b22" d="M5 4h6v2H5z"/><path fill="#f39c38" d="M3 6h10v6H3z"/><circle cx="5" cy="8" r="1.5" fill="#ffeb3b"/><circle cx="11" cy="8" r="1.5" fill="#ffeb3b"/><path fill="#000" d="M6 11h4v1H6z"/></svg>`
-            },
-            { 
-                name: "アイアンオーク", 
-                hp: 55, maxHp: 55, atk: 21, def: 7, exp: 40, gold: 55, 
-                flavor: "分厚い鉄の鎧に身を包んだ屈強な獣人戦士。",
-                svg: `<svg width="50" height="50" viewBox="0 0 16 16"><path fill="#7c78b8" d="M3 3h10v4H3z"/><path fill="#434059" d="M4 7h8v6H4z"/><path fill="#e84848" d="M6 8h4v2H6z"/></svg>`
-            },
-            { 
-                name: "深淵のワイバーン", 
-                hp: 95, maxHp: 95, atk: 30, def: 11, exp: 85, gold: 130, 
-                flavor: "漆黒の翼で地下空洞を支配する古代の竜。",
-                svg: `<svg width="50" height="50" viewBox="0 0 16 16"><path fill="#a852fb" d="M2 5l6-3 6 3-3 5H5z"/><path fill="#c23b22" d="M6 9h4v4H6z"/><circle cx="7" cy="7" r="1" fill="#ffeb3b"/><circle cx="9" cy="7" r="1" fill="#ffeb3b"/></svg>`
-            }
-        ];
-
-        function startBattle() {
-            gameState = 1;
-            let available = monsterRoster.slice(0, Math.min(currentFloor + 1, monsterRoster.length));
-            if (currentFloor % 5 === 0 && Math.random() < 0.6) {
-                let boss = JSON.parse(JSON.stringify(monsterRoster[monsterRoster.length - 1]));
-                boss.name = "【ボス】" + boss.name;
-                currentMonster = boss;
-            } else {
-                let template = available[Math.floor(Math.random() * available.length)];
-                currentMonster = JSON.parse(JSON.stringify(template));
-                currentMonster.hp = Math.round(currentMonster.hp * (1 + (currentFloor - 1) * 0.22));
-                currentMonster.maxHp = currentMonster.hp;
-                currentMonster.atk = Math.round(currentMonster.atk * (1 + (currentFloor - 1) * 0.14));
-            }
-            document.getElementById('monster-name').innerText = `${currentMonster.name} があらわれた！`;
-            document.getElementById('monster-hp-text').innerText = `${currentMonster.hp} / ${currentMonster.maxHp}`;
-            document.getElementById('monster-flavor').innerText = currentMonster.flavor;
-            document.getElementById('monster-svg-container').innerHTML = currentMonster.svg;
-            document.getElementById('battle-overlay').classList.remove('hidden');
-            document.getElementById('view-title').innerText = "⚠️ 戦闘発生中！";
-            logMessage(`⚠️ 凶悪な ${currentMonster.name} と遭遇した！`);
-            playSound('hit');
-        }
-
-        function battleAction(action) {
-            if (gameState !== 1) return;
-            let pAtkTotal = player.atk + player.weapon.atkBonus;
-            let pDefTotal = player.def + player.armor.defBonus;
-            if (action === 'attack') {
-                let dmg = Math.max(1, pAtkTotal - currentMonster.def + Math.floor(Math.random() * 4));
-                currentMonster.hp = Math.max(0, currentMonster.hp - dmg);
-                logMessage(`⚔️ プレイヤーの攻撃！ ${currentMonster.name} に ${dmg} のダメージ！`);
-                playSound('hit');
-            } else if (action === 'skill') {
-                if (player.mp < 8) {
-                    logMessage(`❌ MPが足りない！（必要: 8）`);
-                    return;
-                }
-                player.mp -= 8;
-                let skillDmg = Math.max(1, Math.round(pAtkTotal * 1.7) - currentMonster.def);
-                currentMonster.hp = Math.max(0, currentMonster.hp - skillDmg);
-                logMessage(`✨ 秘剣ヒートスラッシュ！ ${currentMonster.name} に ${skillDmg} の強烈な一撃！`);
-                playSound('victory');
-            } else if (action === 'potion') {
-                usePotionInBattle();
-                return;
-            } else if (action === 'run') {
-                if (Math.random() < 0.65) {
-                    logMessage(`🏃 巧みに敵の隙を突き、戦闘から逃走した！`);
-                    endBattle();
-                    return;
-                } else {
-                    logMessage(`🏃 逃走に失敗した！`);
-                }
-            }
-            if (currentMonster.hp <= 0) {
-                logMessage(`🏆 ${currentMonster.name} を討伐した！`);
-                player.exp += currentMonster.exp;
-                player.gold += currentMonster.gold;
-                logMessage(`✨ 経験値 +${currentMonster.exp}, ゴールド +${currentMonster.gold} を獲得！`);
-                playSound('victory');
-                checkLevelUp();
-                endBattle();
-                return;
-            }
-            let mDmg = Math.max(1, currentMonster.atk - pDefTotal + Math.floor(Math.random() * 4));
-            player.hp = Math.max(0, player.hp - mDmg);
-            logMessage(`💥 ${currentMonster.name} の反撃！ ${mDmg} のダメージを受けた。`);
-            playSound('hit');
-            updateStatsUI();
-            if (player.hp <= 0) {
-                logMessage(`💀 力尽きてしまった… 所持金を半分失い、地下1階に戻される。`);
-                player.gold = Math.floor(player.gold / 2);
-                player.hp = player.maxHp;
-                player.mp = player.maxMp;
-                currentFloor = 1;
-                generateMap();
-                player.x = 1;
-                player.y = 1;
-                endBattle();
-            }
-        }
-
-        function usePotionInBattle() {
-            if (player.potions > 0) {
-                player.potions--;
-                let heal = 40;
-                player.hp = Math.min(player.maxHp, player.hp + heal);
-                logMessage(`🧪 薬草を使った！ HPが ${heal} 回復した (残り: ${player.potions}個)`);
-                playSound('item');
-                updateStatsUI();
-            } else {
-                logMessage(`❌ 使える薬草がない！`);
-            }
-        }
-
-        function usePotionOutSide() {
-            if (player.hp >= player.maxHp) {
-                logMessage(`💡 体力はすでに満タンです。`);
-                return;
-            }
-            if (player.potions > 0) {
-                player.potions--;
-                let heal = 40;
-                player.hp = Math.min(player.maxHp, player.hp + heal);
-                logMessage(`🧪 薬草を使用してHPが ${heal} 回復した。`);
-                playSound('item');
-                updateStatsUI();
-                renderItemModal();
-            } else {
-                logMessage(`❌ 薬草を持っていません。道具屋で購入してください。`);
-            }
-        }
-
-        function endBattle() {
-            document.getElementById('battle-overlay').classList.add('hidden');
-            gameState = 0;
-            document.getElementById('view-title').innerText = "地下ダンジョン 探索中";
-            updateStatsUI();
-            drawMap();
-        }
-
-        function checkLevelUp() {
-            if (player.exp >= player.nextExp) {
-                player.level++;
-                player.exp -= player.nextExp;
-                player.nextExp = Math.round(player.nextExp * 1.45);
-                player.maxHp += 18;
-                player.hp = player.maxHp;
-                player.maxMp += 4;
-                player.mp = player.maxMp;
-                player.atk += 5;
-                player.def += 3;
-                logMessage(`🎉 レベルアップ！ Lv.${player.level} に到達！ 全能力が向上した！`);
-                playSound('level_up');
-            }
-        }
-
-        const shopInventory = [
-            { type: 'potion', name: '特製薬草 (HP+40)', price: 35, desc: 'HPを40回復する回復薬。' },
-            { type: 'weapon', name: 'アイアンソード', atkBonus: 6, price: 95, desc: '鍛えられた鉄の剣 (ATK+6)' },
-            { type: 'weapon', name: 'ミスリルブレード', atkBonus: 14, price: 240, desc: '神秘の金属製の名剣 (ATK+14)' },
-            { type: 'armor', name: 'スケイルメイル', defBonus: 5, price: 110, desc: 'ウロコ状の強固な鎧 (DEF+5)' },
-            { type: 'armor', name: 'パラディンプレート', defBonus: 12, price: 260, desc: '騎士団長の重厚な鎧 (DEF+12)' }
-        ];
-
-        function openActionMenu() {
-            if (gameState !== 0) return;
-            gameState = 2;
-            document.getElementById('action-overlay').classList.remove('hidden');
-            document.getElementById('view-title').innerText = "⚙️ アクション選択中";
-        }
-
-        function openShop() {
-            if (gameState !== 0 && gameState !== 2) return;
-            gameState = 2;
-            renderShopItems();
-            document.getElementById('shop-overlay').classList.remove('hidden');
-            document.getElementById('view-title').innerText = "🏪 道具屋で買い物中";
-        }
-
-        function openItemModal() {
-            if (gameState !== 0 && gameState !== 2) return;
-            gameState = 2;
-            renderItemModal();
-            document.getElementById('item-overlay').classList.remove('hidden');
-            document.getElementById('view-title').innerText = "🎒 アイテム使用画面";
-        }
-
-        function openEquipModal() {
-            if (gameState !== 0 && gameState !== 2) return;
-            gameState = 2;
-            renderEquipModal();
-            document.getElementById('equip-overlay').classList.remove('hidden');
-            document.getElementById('view-title').innerText = "🛡️ 装備の着せ替え中";
-        }
-
-        function closeModal(modalId) {
-            document.getElementById(modalId).classList.add('hidden');
-            gameState = 0;
-            document.getElementById('view-title').innerText = "地下ダンジョン 探索中";
-            drawMap();
-        }
-
-        function renderShopItems() {
-            let container = document.getElementById('shop-items-list');
-            container.innerHTML = '';
-            shopInventory.forEach((item, index) => {
-                let div = document.createElement('div');
-                div.className = "bg-[#15141c] p-2.5 border border-[#2a2838] flex justify-between items-center";
-                div.innerHTML = `
-                    <div>
-                        <div class="font-bold text-[#f39c38] text-xs">${item.name} <span class="text-[#f1c40f] font-normal">(${item.price}G)</span></div>
-                        <div class="text-[10px] text-[#8c88a3] mt-0.5">${item.desc}</div>
-                    </div>
-                    <button onclick="buyItem(${index})" class="pixel-btn text-[#f39c38] px-3 py-1.5 text-xs font-bold">購入</button>
-                `;
-                container.appendChild(div);
-            });
-        }
-
-        function buyItem(index) {
-            let item = shopInventory[index];
-            if (player.gold < item.price) {
-                logMessage(`❌ ゴールドが不足しています！ (必要: ${item.price}G)`);
-                return;
-            }
-            player.gold -= item.price;
-            playSound('item');
-            if (item.type === 'potion') {
-                player.potions++;
-                logMessage(`🧪 特製薬草を購入しました！ (所持数: ${player.potions})`);
-            } else if (item.type === 'weapon') {
-                let newWp = { name: item.name, atkBonus: item.atkBonus };
-                if (!player.inventoryWeapons.some(w => w.name === item.name)) {
-                    player.inventoryWeapons.push(newWp);
-                }
-                player.weapon = newWp;
-                logMessage(`⚔️ 武器「${item.name}」を購入し装備した！`);
-            } else if (item.type === 'armor') {
-                let newAm = { name: item.name, defBonus: item.defBonus };
-                if (!player.inventoryArmors.some(a => a.name === item.name)) {
-                    player.inventoryArmors.push(newAm);
-                }
-                player.armor = newAm;
-                logMessage(`🛡️ 防具「${item.name}」を購入し装備した！`);
-            }
-            updateStatsUI();
-            renderShopItems();
-            renderEquipModal();
-        }
-
-        function renderItemModal() {
-            let container = document.getElementById('modal-inventory-list');
-            container.innerHTML = `
-                <div class="bg-[#15141c] p-2.5 border border-[#2a2838] flex justify-between items-center">
-                    <div>
-                        <span class="text-[#3ebf73] font-bold">🧪 特製薬草</span> 
-                        <span class="text-[#8c88a3]">x ${player.potions} (HP 40回復)</span>
-                    </div>
-                    <button onclick="usePotionOutSide()" class="pixel-btn text-[#3ebf73] px-3 py-1.5 font-bold text-xs">使用する</button>
-                </div>
-            `;
-        }
-
-        function renderEquipModal() {
-            let container = document.getElementById('modal-equip-list');
-            container.innerHTML = '';
-            let wHeader = document.createElement('div');
-            wHeader.className = "text-[#f39c38] font-bold mb-1 text-xs";
-            wHeader.innerText = "【所持武器一覧】";
-            container.appendChild(wHeader);
-            player.inventoryWeapons.forEach((w) => {
-                let isEquipped = player.weapon.name === w.name;
-                let div = document.createElement('div');
-                div.className = "bg-[#15141c] p-2 border border-[#2a2838] flex justify-between items-center mb-1.5";
-                div.innerHTML = `
-                    <div>
-                        <span class="font-bold">${w.name}</span> <span class="text-[#f39c38]">(ATK+${w.atkBonus})</span>
-                        ${isEquipped ? '<span class="text-[10px] text-[#3ebf73] ml-2 font-bold">[装備中]</span>' : ''}
-                    </div>
-                    ${!isEquipped ? `<button onclick="equipWeapon('${w.name}')" class="pixel-btn text-[#f39c38] px-2.5 py-1 text-[11px] font-bold">変更</button>` : ''}
-                `;
-                container.appendChild(div);
-            });
-            let aHeader = document.createElement('div');
-            aHeader.className = "text-[#3ec9c9] font-bold mt-3 mb-1 text-xs";
-            aHeader.innerText = "【所持防具一覧】";
-            container.appendChild(aHeader);
-            player.inventoryArmors.forEach((a) => {
-                let isEquipped = player.armor.name === a.name;
-                let div = document.createElement('div');
-                div.className = "bg-[#15141c] p-2 border border-[#2a2838] flex justify-between items-center mb-1.5";
-                div.innerHTML = `
-                    <div>
-                        <span class="font-bold">${a.name}</span> <span class="text-[#3ec9c9]">(DEF+${a.defBonus})</span>
-                        ${isEquipped ? '<span class="text-[10px] text-[#3ebf73] ml-2 font-bold">[装備中]</span>' : ''}
-                    </div>
-                    ${!isEquipped ? `<button onclick="equipArmor('${a.name}')" class="pixel-btn text-[#3ec9c9] px-2.5 py-1 text-[11px] font-bold">変更</button>` : ''}
-                `;
-                container.appendChild(div);
-            });
-        }
-
-        function equipWeapon(name) {
-            let found = player.inventoryWeapons.find(w => w.name === name);
-            if (found) {
-                player.weapon = found;
-                logMessage(`⚔️ 武器を「${found.name}」に着せ替えた！`);
-                playSound('item');
-                updateStatsUI();
-                renderEquipModal();
-            }
-        }
-
-        function equipArmor(name) {
-            let found = player.inventoryArmors.find(a => a.name === name);
-            if (found) {
-                player.armor = found;
-                logMessage(`🛡️ 防具を「${found.name}」に着せ替えた！`);
-                playSound('item');
-                updateStatsUI();
-                renderEquipModal();
-            }
-        }
-
-        function updatePlayerName() {
-            const inputVal = document.getElementById('player-name-input').value.trim();
-            if (inputVal.length > 0) {
-                player.name = inputVal;
-                logMessage(`✏️ 名前を「${player.name}」に変更しました。`);
-                updateStatsUI();
-            }
-        }
-
-        function updateStatsUI() {
-            document.getElementById('player-level').innerText = `Lv.${player.level}`;
-            document.getElementById('player-hp-text').innerText = `${player.hp} / ${player.maxHp}`;
-            let hpPct = (player.hp / player.maxHp) * 100;
-            document.getElementById('player-hp-bar').style.width = `${hpPct}%`;
-            document.getElementById('player-mp-text').innerText = `${player.mp} / ${player.maxMp}`;
-            let mpPct = (player.mp / player.maxMp) * 100;
-            document.getElementById('player-mp-bar').style.width = `${mpPct}%`;
-            document.getElementById('player-exp-text').innerText = `${player.exp} / ${player.nextExp}`;
-            let expPct = Math.min(100, (player.exp / player.nextExp) * 100);
-            document.getElementById('player-exp-bar').style.width = `${expPct}%`;
-            document.getElementById('stat-atk').innerText = `${player.atk} (+${player.weapon.atkBonus})`;
-            document.getElementById('stat-def').innerText = `${player.def} (+${player.armor.defBonus})`;
-            document.getElementById('stat-gold').innerText = player.gold;
-            document.getElementById('eq-weapon').innerText = `${player.weapon.name} (+${player.weapon.atkBonus})`;
-            document.getElementById('eq-armor').innerText = `${player.armor.name} (+${player.armor.defBonus})`;
+        let tileType = mapData[newY][newX];
+        if (tileType === 2) {
+            currentFloor++;
             document.getElementById('floor-indicator').innerText = `地下 ${currentFloor} 階`;
-            document.getElementById('pos-x').innerText = player.x;
-            document.getElementById('pos-y').innerText = player.y;
-        }
-
-        function logMessage(msg) {
-            let logDiv = document.getElementById('game-log');
-            let p = document.createElement('div');
-            p.innerText = msg;
-            logDiv.appendChild(p);
-            // 行数制限
-            while (logDiv.children.length > 40) {
-                logDiv.removeChild(logDiv.firstChild);
+            logMessage(`🎉 地下 ${currentFloor} 階へ階段を下りた！魔物たちがさらに凶暴になる。`);
+            playSound('level_up');
+            generateMap();
+            player.x = 1;
+            player.y = 1;
+            document.getElementById('pos-x').innerText = 1;
+            document.getElementById('pos-y').innerText = 1;
+        } else if (tileType === 3) {
+            mapData[newY][newX] = 0;
+            let goldReward = Math.floor(Math.random() * 25 * currentFloor) + 18;
+            player.gold += goldReward;
+            let bonusMsg = "";
+            if (Math.random() < 0.32) {
+                player.potions++;
+                bonusMsg = " ＆ 特製薬草を発見！";
+                playSound('item');
+            } else {
+                playSound('victory');
             }
-            logDiv.scrollTop = logDiv.scrollHeight;
-        }
-
-        function clearLog() {
-            document.getElementById('game-log').innerHTML = '<div class="text-[#8c88a3]">ログをクリアしました。</div>';
-        }
-
-        function toggleSound() {
-            soundEnabled = !soundEnabled;
-            document.getElementById('sound-btn').innerHTML = soundEnabled ? '🔊 ON' : '🔇 OFF';
-        }
-
-        window.addEventListener('keydown', (e) => {
-            if (gameState !== 0) return;
-            if (['ArrowUp', 'KeyW'].includes(e.code)) { e.preventDefault(); movePlayer(0, -1); }
-            else if (['ArrowDown', 'KeyS'].includes(e.code)) { e.preventDefault(); movePlayer(0, 1); }
-            else if (['ArrowLeft', 'KeyA'].includes(e.code)) { e.preventDefault(); movePlayer(-1, 0); }
-            else if (['ArrowRight', 'KeyD'].includes(e.code)) { e.preventDefault(); movePlayer(1, 0); }
-        });
-
-        window.onload = function() {
-            loadGame();
+            logMessage(`📦 宝箱を開けた！ ${goldReward} ゴールドを入手！${bonusMsg}`);
             updateStatsUI();
-            drawMap();
-            logMessage(`地下ダンジョンへようこそ、${player.name}！「アクション」ボタンから道具屋・アイテム・装備変更が可能です。`);
+        } else if (tileType === 4 || Math.random() < 0.20) {
+            if (tileType === 4) mapData[newY][newX] = 0;
+            startBattle();
+        }
+        updateStatsUI();
+        drawMap();
+    }
+
+    // =====================
+    // 戦闘関連（既存ベース）
+    // =====================
+    const monsterRoster = [
+        { name: "どくスライム", hp: 22, maxHp: 22, atk: 9, def: 2, exp: 14, gold: 16, 
+          flavor: "ネバネバした猛毒を持つ原色の魔物。",
+          svg: `<svg width="50" height="50" viewBox="0 0 16 16"><path fill="#3ebf73" d="M3 10h10v3H3z"/><path fill="#3ec9c9" d="M4 7h8v3H4z"/><path fill="#12ff52" d="M6 5h4v2H6z"/><circle cx="6" cy="8" r="1" fill="#000"/><circle cx="10" cy="8" r="1" fill="#000"/></svg>` },
+        { name: "いたずらゴブリン", hp: 36, maxHp: 36, atk: 15, def: 4, exp: 24, gold: 32, 
+          flavor: "小回りの利く動きで旅人を翻弄する小鬼。",
+          svg: `<svg width="50" height="50" viewBox="0 0 16 16"><path fill="#c23b22" d="M5 4h6v2H5z"/><path fill="#f39c38" d="M3 6h10v6H3z"/><circle cx="5" cy="8" r="1.5" fill="#ffeb3b"/><circle cx="11" cy="8" r="1.5" fill="#ffeb3b"/><path fill="#000" d="M6 11h4v1H6z"/></svg>` },
+        { name: "アイアンオーク", hp: 55, maxHp: 55, atk: 21, def: 7, exp: 40, gold: 55, 
+          flavor: "分厚い鉄の鎧に身を包んだ屈強な獣人戦士。",
+          svg: `<svg width="50" height="50" viewBox="0 0 16 16"><path fill="#7c78b8" d="M3 3h10v4H3z"/><path fill="#434059" d="M4 7h8v6H4z"/><path fill="#e84848" d="M6 8h4v2H6z"/></svg>` },
+        { name: "深淵のワイバーン", hp: 95, maxHp: 95, atk: 30, def: 11, exp: 85, gold: 130, 
+          flavor: "漆黒の翼で地下空洞を支配する古代の竜。",
+          svg: `<svg width="50" height="50" viewBox="0 0 16 16"><path fill="#a852fb" d="M2 5l6-3 6 3-3 5H5z"/><path fill="#c23b22" d="M6 9h4v4H6z"/><circle cx="7" cy="7" r="1" fill="#ffeb3b"/><circle cx="9" cy="7" r="1" fill="#ffeb3b"/></svg>` }
+    ];
+
+    function startBattle() {
+        gameState = 1;
+        let available = monsterRoster.slice(0, Math.min(currentFloor + 1, monsterRoster.length));
+        if (currentFloor % 5 === 0 && Math.random() < 0.55) {
+            let boss = JSON.parse(JSON.stringify(monsterRoster[monsterRoster.length - 1]));
+            boss.name = "【ボス】" + boss.name;
+            currentMonster = boss;
+        } else {
+            let template = available[Math.floor(Math.random() * available.length)];
+            currentMonster = JSON.parse(JSON.stringify(template));
+            currentMonster.hp = Math.round(currentMonster.hp * (1 + (currentFloor - 1) * 0.22));
+            currentMonster.maxHp = currentMonster.hp;
+            currentMonster.atk = Math.round(currentMonster.atk * (1 + (currentFloor - 1) * 0.14));
+        }
+        document.getElementById('monster-name').innerText = `${currentMonster.name} があらわれた！`;
+        document.getElementById('monster-hp-text').innerText = `${currentMonster.hp} / ${currentMonster.maxHp}`;
+        document.getElementById('monster-flavor').innerText = currentMonster.flavor;
+        document.getElementById('monster-svg-container').innerHTML = currentMonster.svg;
+        document.getElementById('battle-overlay').classList.remove('hidden');
+        document.getElementById('view-title').innerText = "⚠️ 戦闘発生中！";
+        logMessage(`⚠️ 凶悪な ${currentMonster.name} と遭遇した！`);
+        playSound('hit');
+    }
+
+    function battleAction(action) {
+        if (gameState !== 1) return;
+        let pAtkTotal = player.atk + player.weapon.atkBonus;
+        let pDefTotal = player.def + player.armor.defBonus;
+
+        if (action === 'attack') {
+            let dmg = Math.max(1, pAtkTotal - currentMonster.def + Math.floor(Math.random() * 4));
+            currentMonster.hp = Math.max(0, currentMonster.hp - dmg);
+            logMessage(`⚔️ プレイヤーの攻撃！ ${currentMonster.name} に ${dmg} のダメージ！`);
+            playSound('hit');
+        } else if (action === 'skill') {
+            if (player.mp < 8) {
+                logMessage(`❌ MPが足りない！（必要: 8）`);
+                return;
+            }
+            player.mp -= 8;
+            let skillDmg = Math.max(1, Math.round(pAtkTotal * 1.7) - currentMonster.def);
+            currentMonster.hp = Math.max(0, currentMonster.hp - skillDmg);
+            logMessage(`✨ 秘剣ヒートスラッシュ！ ${currentMonster.name} に ${skillDmg} の強烈な一撃！`);
+            playSound('victory');
+        } else if (action === 'potion') {
+            usePotionInBattle();
+            return;
+        } else if (action === 'run') {
+            if (Math.random() < 0.65) {
+                logMessage(`🏃 巧みに敵の隙を突き、戦闘から逃走した！`);
+                endBattle();
+                return;
+            } else {
+                logMessage(`🏃 逃走に失敗した！`);
+            }
+        }
+
+        document.getElementById('monster-hp-text').innerText = `${currentMonster.hp} / ${currentMonster.maxHp}`;
+
+        if (currentMonster.hp <= 0) {
+            logMessage(`🏆 ${currentMonster.name} を討伐した！`);
+            player.exp += currentMonster.exp;
+            player.gold += currentMonster.gold;
+            logMessage(`✨ 経験値 +${currentMonster.exp}, ゴールド +${currentMonster.gold} を獲得！`);
+            playSound('victory');
+            checkLevelUp();
+            endBattle();
+            return;
+        }
+
+        // 敵の反撃
+        let mDmg = Math.max(1, currentMonster.atk - pDefTotal + Math.floor(Math.random() * 4));
+        player.hp = Math.max(0, player.hp - mDmg);
+        logMessage(`💥 ${currentMonster.name} の反撃！ ${mDmg} のダメージを受けた。`);
+        playSound('hit');
+        updateStatsUI();
+
+        if (player.hp <= 0) {
+            logMessage(`💀 力尽きてしまった… 所持金を半分失い、地下1階に戻される。`);
+            player.gold = Math.floor(player.gold / 2);
+            player.hp = player.maxHp;
+            player.mp = player.maxMp;
+            currentFloor = 1;
+            document.getElementById('floor-indicator').innerText = `地下 1 階`;
+            generateMap();
+            player.x = 1;
+            player.y = 1;
+            endBattle();
+        }
+    }
+
+    function usePotionInBattle() {
+        if (player.potions > 0) {
+            player.potions--;
+            let heal = 40;
+            player.hp = Math.min(player.maxHp, player.hp + heal);
+            logMessage(`🧪 薬草を使った！ HPが ${heal} 回復した (残り: ${player.potions}個)`);
+            playSound('item');
+            updateStatsUI();
+        } else {
+            logMessage(`❌ 使える薬草がない！`);
+        }
+    }
+
+    function endBattle() {
+        gameState = 0;
+        document.getElementById('battle-overlay').classList.add('hidden');
+        document.getElementById('view-title').innerText = "地下ダンジョン 探索中";
+        updateStatsUI();
+        drawMap();
+    }
+
+    function checkLevelUp() {
+        while (player.exp >= player.nextExp) {
+            player.exp -= player.nextExp;
+            player.level++;
+            player.maxHp += 12;
+            player.hp = player.maxHp;
+            player.maxMp += 4;
+            player.mp = player.maxMp;
+            player.atk += 3;
+            player.def += 2;
+            player.nextExp = Math.floor(player.nextExp * 1.45);
+            logMessage(`🎊 レベルアップ！ Lv.${player.level} になった！ HP・MP・攻撃・防御が上昇！`);
+            playSound('level_up');
+        }
+    }
+
+    // =====================
+    // UI関連
+    // =====================
+    function updateStatsUI() {
+        document.getElementById('player-level').innerText = `Lv.${player.level}`;
+        document.getElementById('hp-text').innerText = `${player.hp} / ${player.maxHp}`;
+        document.getElementById('hp-bar').style.width = `${(player.hp / player.maxHp) * 100}%`;
+        document.getElementById('mp-text').innerText = `${player.mp} / ${player.maxMp}`;
+        document.getElementById('mp-bar').style.width = `${(player.mp / player.maxMp) * 100}%`;
+        document.getElementById('exp-text').innerText = `${player.exp} / ${player.nextExp}`;
+        document.getElementById('exp-bar').style.width = `${(player.exp / player.nextExp) * 100}%`;
+        document.getElementById('atk-text').innerText = player.atk + player.weapon.atkBonus;
+        document.getElementById('def-text').innerText = player.def + player.armor.defBonus;
+        document.getElementById('gold-text').innerText = `${player.gold} G`;
+        document.getElementById('weapon-text').innerText = `${player.weapon.name} (+${player.weapon.atkBonus})`;
+        document.getElementById('armor-text').innerText = `${player.armor.name} (+${player.armor.defBonus})`;
+    }
+
+    function logMessage(msg) {
+        const area = document.getElementById('log-area');
+        const p = document.createElement('div');
+        p.textContent = msg;
+        area.appendChild(p);
+        area.scrollTop = area.scrollHeight;
+        // 最大30行くらいに制限
+        while (area.children.length > 30) {
+            area.removeChild(area.firstChild);
+        }
+    }
+
+    function clearLog() {
+        document.getElementById('log-area').innerHTML = '';
+    }
+
+    function updatePlayerName() {
+        const name = document.getElementById('player-name-input').value.trim() || "エリック";
+        player.name = name;
+        logMessage(`名前を「${name}」に変更した。`);
+    }
+
+    function openActionMenu() {
+        if (gameState !== 0) return;
+        document.getElementById('action-overlay').classList.remove('hidden');
+    }
+
+    function closeModal(id) {
+        document.getElementById(id).classList.add('hidden');
+    }
+
+    // 簡易ショップ・アイテム・装備（必要最低限）
+    function openShop() {
+        const list = document.getElementById('shop-items-list');
+        list.innerHTML = `
+            <div class="pixel-box-sm p-2 flex justify-between items-center">
+                <span>ヒノキの棒 (+0)</span>
+                <button onclick="buyItem('weapon',0)" class="pixel-btn px-2 py-0.5 text-[10px]">購入 0G</button>
+            </div>
+            <div class="pixel-box-sm p-2 flex justify-between items-center">
+                <span>鉄の剣 (+8)</span>
+                <button onclick="buyItem('weapon',1)" class="pixel-btn px-2 py-0.5 text-[10px]">購入 120G</button>
+            </div>
+            <div class="pixel-box-sm p-2 flex justify-between items-center">
+                <span>鋼の大剣 (+18)</span>
+                <button onclick="buyItem('weapon',2)" class="pixel-btn px-2 py-0.5 text-[10px]">購入 350G</button>
+            </div>
+            <div class="pixel-box-sm p-2 flex justify-between items-center">
+                <span>布の服 (+0)</span>
+                <button onclick="buyItem('armor',0)" class="pixel-btn px-2 py-0.5 text-[10px]">購入 0G</button>
+            </div>
+            <div class="pixel-box-sm p-2 flex justify-between items-center">
+                <span>革の鎧 (+6)</span>
+                <button onclick="buyItem('armor',1)" class="pixel-btn px-2 py-0.5 text-[10px]">購入 100G</button>
+            </div>
+            <div class="pixel-box-sm p-2 flex justify-between items-center">
+                <span>鋼の鎧 (+14)</span>
+                <button onclick="buyItem('armor',2)" class="pixel-btn px-2 py-0.5 text-[10px]">購入 300G</button>
+            </div>
+            <div class="pixel-box-sm p-2 flex justify-between items-center">
+                <span>薬草 ×1</span>
+                <button onclick="buyItem('potion')" class="pixel-btn px-2 py-0.5 text-[10px]">購入 30G</button>
+            </div>
+        `;
+        document.getElementById('shop-overlay').classList.remove('hidden');
+    }
+
+    function buyItem(type, idx) {
+        if (type === 'potion') {
+            if (player.gold >= 30) {
+                player.gold -= 30;
+                player.potions++;
+                logMessage("薬草を購入した。");
+                playSound('item');
+            } else logMessage("ゴールドが足りない！");
+        } else if (type === 'weapon') {
+            const weapons = [
+                {name:"ヒノキの棒", atkBonus:0, price:0},
+                {name:"鉄の剣", atkBonus:8, price:120},
+                {name:"鋼の大剣", atkBonus:18, price:350}
+            ];
+            const w = weapons[idx];
+            if (player.gold >= w.price) {
+                player.gold -= w.price;
+                player.weapon = {name: w.name, atkBonus: w.atkBonus};
+                logMessage(`${w.name} を装備した！`);
+                playSound('item');
+            } else logMessage("ゴールドが足りない！");
+        } else if (type === 'armor') {
+            const armors = [
+                {name:"布の服", defBonus:0, price:0},
+                {name:"革の鎧", defBonus:6, price:100},
+                {name:"鋼の鎧", defBonus:14, price:300}
+            ];
+            const a = armors[idx];
+            if (player.gold >= a.price) {
+                player.gold -= a.price;
+                player.armor = {name: a.name, defBonus: a.defBonus};
+                logMessage(`${a.name} を装備した！`);
+                playSound('item');
+            } else logMessage("ゴールドが足りない！");
+        }
+        updateStatsUI();
+    }
+
+    function openItemModal() {
+        const list = document.getElementById('modal-inventory-list');
+        list.innerHTML = `
+            <div class="pixel-box-sm p-2 flex justify-between items-center">
+                <span>薬草 × ${player.potions}</span>
+                <button onclick="usePotionOutside()" class="pixel-btn px-2 py-0.5 text-[10px]">使用</button>
+            </div>
+        `;
+        document.getElementById('item-overlay').classList.remove('hidden');
+    }
+
+    function usePotionOutside() {
+        if (player.potions > 0) {
+            player.potions--;
+            player.hp = Math.min(player.maxHp, player.hp + 40);
+            logMessage(`薬草を使った。HPが回復した。（残り${player.potions}個）`);
+            playSound('item');
+            updateStatsUI();
+            openItemModal(); // 再描画
+        } else {
+            logMessage("薬草がありません。");
+        }
+    }
+
+    function openEquipModal() {
+        const list = document.getElementById('modal-equip-list');
+        list.innerHTML = `
+            <div class="text-[10px] text-[#8c88a3] mb-1">現在の装備を確認できます（詳細装備切り替えは今後拡張予定）</div>
+            <div class="pixel-box-sm p-2">武器: ${player.weapon.name} (+${player.weapon.atkBonus})</div>
+            <div class="pixel-box-sm p-2">防具: ${player.armor.name} (+${player.armor.defBonus})</div>
+        `;
+        document.getElementById('equip-overlay').classList.remove('hidden');
+    }
+
+    // =====================
+    // セーブ・ロード
+    // =====================
+    function saveGame() {
+        document.getElementById('save-overlay').classList.remove('hidden');
+        const data = {
+            player: player,
+            currentFloor: currentFloor,
+            mapData: mapData
         };
-    </script>
+        localStorage.setItem('pixelquest_save', JSON.stringify(data));
+        setTimeout(() => {
+            document.getElementById('save-overlay').classList.add('hidden');
+            logMessage("ゲームデータをセーブしました。");
+            playSound('item');
+        }, 600);
+    }
+
+    function loadGame() {
+        const raw = localStorage.getItem('pixelquest_save');
+        if (raw) {
+            try {
+                const data = JSON.parse(raw);
+                Object.assign(player, data.player);
+                currentFloor = data.currentFloor || 1;
+                if (data.mapData) mapData = data.mapData;
+                document.getElementById('player-name-input').value = player.name;
+                document.getElementById('floor-indicator').innerText = `地下 ${currentFloor} 階`;
+                logMessage("前回のセーブデータを読み込みました。");
+            } catch (e) {
+                console.error(e);
+            }
+        }
+    }
+
+    // =====================
+    // 簡易サウンド
+    // =====================
+    function playSound(type) {
+        if (!soundEnabled) return;
+        try {
+            const ctx = new (window.AudioContext || window.webkitAudioContext)();
+            const osc = ctx.createOscillator();
+            const gain = ctx.createGain();
+            osc.connect(gain);
+            gain.connect(ctx.destination);
+            if (type === 'step') {
+                osc.frequency.value = 180;
+                gain.gain.value = 0.03;
+                osc.start();
+                osc.stop(ctx.currentTime + 0.04);
+            } else if (type === 'hit') {
+                osc.frequency.value = 120;
+                gain.gain.value = 0.06;
+                osc.start();
+                osc.stop(ctx.currentTime + 0.08);
+            } else if (type === 'victory' || type === 'item' || type === 'level_up') {
+                osc.frequency.value = 440;
+                gain.gain.value = 0.05;
+                osc.start();
+                setTimeout(() => { osc.frequency.value = 660; }, 60);
+                osc.stop(ctx.currentTime + 0.15);
+            }
+        } catch (e) {}
+    }
+
+    function toggleSound() {
+        soundEnabled = !soundEnabled;
+        document.getElementById('sound-btn').innerText = soundEnabled ? "🔊 ON" : "🔇 OFF";
+    }
+</script>
 </body>
 </html>
