@@ -9,10 +9,11 @@
     <style>
         * { -webkit-tap-highlight-color: transparent; box-sizing: border-box; }
         html, body {
-            height: 100%;
+            min-height: 100%;
             margin: 0;
             padding: 0;
-            overflow: hidden;
+            overflow-x: hidden;
+            overflow-y: auto;
             background: #0d0c11;
             font-family: 'DotGothic16', monospace;
             color: #f3efe6;
@@ -21,10 +22,10 @@
             touch-action: manipulation;
         }
         body {
-            height: 100dvh;
+            min-height: 100dvh;
             display: flex;
             flex-direction: column;
-            padding: 6px;
+            padding: max(6px, env(safe-area-inset-top)) max(6px, env(safe-area-inset-right)) max(12px, env(safe-area-inset-bottom)) max(6px, env(safe-area-inset-left));
             max-width: 520px;
             margin: 0 auto;
         }
@@ -121,7 +122,7 @@
             </div>
 
             <div id="canvas-container" class="relative flex-1 bg-[#0b0a10] border-2 border-[#2a2838] flex items-center justify-center min-h-[160px]">
-                <canvas id="gameCanvas" width="320" height="320" class="max-w-full max-h-full object-contain"></canvas>
+                <canvas id="gameCanvas" width="320" height="320" class="max-w-full max-h-full object-contain" style="width:min(78vw,280px);height:min(78vw,280px);"></canvas>
 
                 <!-- 戦闘オーバーレイ（白い枠線追加） -->
                 <div id="battle-overlay" class="absolute inset-2 modal-overlay flex flex-col justify-between p-2.5 hidden z-10 rounded-sm">
@@ -147,6 +148,7 @@
                         <h3 class="text-[#f39c38] font-bold text-xs">🏪 道具屋</h3>
                         <button onclick="closeModal('shop-overlay')" class="pixel-btn px-2 py-1 text-xs">✕</button>
                     </div>
+                    <div id="shop-balance" class="modal-balance flex justify-between items-center px-2.5 py-1.5 mb-2 shrink-0"></div>
                     <div id="shop-items-list" class="flex-1 overflow-y-auto space-y-1.5 text-xs"></div>
                 </div>
 
@@ -160,9 +162,10 @@
 
                 <div id="equip-overlay" class="absolute inset-2 modal-overlay flex flex-col p-2.5 hidden z-20 rounded-sm">
                     <div class="flex justify-between items-center border-b border-[#2a2838] pb-1.5 mb-1.5">
-                        <h3 class="text-[#f39c38] font-bold text-xs">🛡️ 装備</h3>
+                        <h3 class="text-[#f39c38] font-bold text-xs">🛡️ 装備変更</h3>
                         <button onclick="closeModal('equip-overlay')" class="pixel-btn px-2 py-1 text-xs">✕</button>
                     </div>
+                    <div id="equip-balance" class="modal-balance flex justify-between items-center px-2.5 py-1.5 mb-2 shrink-0"></div>
                     <div id="modal-equip-list" class="flex-1 overflow-y-auto space-y-1.5 text-xs"></div>
                 </div>
 
@@ -256,7 +259,9 @@ const player = {
     hp: 50, maxHp: 50, mp: 20, maxMp: 20,
     exp: 0, nextExp: 30, atk: 12, def: 5, gold: 100, potions: 2,
     weapon: { name: "ヒノキの棒", atkBonus: 0 },
-    armor: { name: "布の服", defBonus: 0 }
+    armor: { name: "布の服", defBonus: 0 },
+    ownedWeapons: ["ヒノキの棒"],
+    ownedArmors: ["布の服"]
 };
 
 window.onload = () => {
@@ -272,9 +277,11 @@ window.onload = () => {
 
 let lastMoveTime = 0;
 function handleDpad(dx, dy, e) {
-    e.preventDefault();
-    e.stopPropagation();
-    e.currentTarget.classList.add('pressed');
+    if (e) {
+        e.preventDefault();
+        e.stopPropagation();
+        if (e.currentTarget) e.currentTarget.classList.add('pressed');
+    }
     const now = Date.now();
     if (now - lastMoveTime < 130) return;
     lastMoveTime = now;
@@ -539,32 +546,137 @@ function openActionMenu() {
 }
 function closeModal(id) { document.getElementById(id).classList.add('hidden'); }
 
+const weaponShop = [
+    {name:"ヒノキの棒",atkBonus:0,price:0},
+    {name:"鉄の剣",atkBonus:8,price:120},
+    {name:"鋼の大剣",atkBonus:18,price:350}
+];
+
+const armorShop = [
+    {name:"布の服",defBonus:0,price:0},
+    {name:"革の鎧",defBonus:6,price:100},
+    {name:"鋼の鎧",defBonus:14,price:300}
+];
+
+function ensureEquipmentData() {
+    if (!Array.isArray(player.ownedWeapons)) player.ownedWeapons = ["ヒノキの棒"];
+    if (!Array.isArray(player.ownedArmors)) player.ownedArmors = ["布の服"];
+    if (!player.ownedWeapons.includes("ヒノキの棒")) player.ownedWeapons.unshift("ヒノキの棒");
+    if (!player.ownedArmors.includes("布の服")) player.ownedArmors.unshift("布の服");
+}
+
+function renderBalance(targetId) {
+    document.getElementById(targetId).innerHTML = `
+        <span class="text-[#8c88a3]">現在の残高</span>
+        <span class="text-[#f1c40f] font-bold text-sm">${player.gold}G</span>
+    `;
+}
+
 function openShop() {
+    ensureEquipmentData();
+    renderBalance('shop-balance');
+    const weaponRows = weaponShop.map((w, i) => {
+        const equipped = player.weapon.name === w.name;
+        const owned = player.ownedWeapons.includes(w.name);
+        const right = equipped
+            ? `<span class="equipped-badge">E</span>`
+            : owned
+                ? `<button onclick="equipWeapon(${i})" class="pixel-btn px-2 py-1 text-[10px] text-[#3ec9c9]">装備</button>`
+                : `<button onclick="buy('w',${i})" class="pixel-btn px-2 py-1 text-[10px]">${w.price}G</button>`;
+        return `<div class="pixel-box-sm shop-row p-2 flex justify-between items-center gap-2"><span>⚔️ ${w.name} (+${w.atkBonus})${equipped ? '<span class="equipped-badge">E</span>' : ''}</span><span class="flex items-center gap-1">${right}</span></div>`;
+    }).join('');
+
+    const armorRows = armorShop.map((a, i) => {
+        const equipped = player.armor.name === a.name;
+        const owned = player.ownedArmors.includes(a.name);
+        const right = equipped
+            ? `<span class="equipped-badge">E</span>`
+            : owned
+                ? `<button onclick="equipArmor(${i})" class="pixel-btn px-2 py-1 text-[10px] text-[#3ec9c9]">装備</button>`
+                : `<button onclick="buy('a',${i})" class="pixel-btn px-2 py-1 text-[10px]">${a.price}G</button>`;
+        return `<div class="pixel-box-sm shop-row p-2 flex justify-between items-center gap-2"><span>🛡️ ${a.name} (+${a.defBonus})${equipped ? '<span class="equipped-badge">E</span>' : ''}</span><span class="flex items-center gap-1">${right}</span></div>`;
+    }).join('');
+
     document.getElementById('shop-items-list').innerHTML = `
-        <div class="pixel-box-sm p-2 flex justify-between items-center"><span>鉄の剣 (+8)</span><button onclick="buy('w',1)" class="pixel-btn px-2 py-0.5 text-[10px]">120G</button></div>
-        <div class="pixel-box-sm p-2 flex justify-between items-center"><span>鋼の大剣 (+18)</span><button onclick="buy('w',2)" class="pixel-btn px-2 py-0.5 text-[10px]">350G</button></div>
-        <div class="pixel-box-sm p-2 flex justify-between items-center"><span>革の鎧 (+6)</span><button onclick="buy('a',1)" class="pixel-btn px-2 py-0.5 text-[10px]">100G</button></div>
-        <div class="pixel-box-sm p-2 flex justify-between items-center"><span>鋼の鎧 (+14)</span><button onclick="buy('a',2)" class="pixel-btn px-2 py-0.5 text-[10px]">300G</button></div>
-        <div class="pixel-box-sm p-2 flex justify-between items-center"><span>薬草</span><button onclick="buy('p')" class="pixel-btn px-2 py-0.5 text-[10px]">30G</button></div>
+        <div class="text-[#f39c38] font-bold mb-1">武器</div>
+        <div class="space-y-1.5">${weaponRows}</div>
+        <div class="text-[#3ec9c9] font-bold mt-3 mb-1">防具</div>
+        <div class="space-y-1.5">${armorRows}</div>
+        <div class="text-[#3ebf73] font-bold mt-3 mb-1">道具</div>
+        <div class="pixel-box-sm shop-row p-2 flex justify-between items-center">
+            <span>🌿 薬草 × ${player.potions}</span>
+            <button onclick="buy('p')" class="pixel-btn px-2 py-1 text-[10px]">30G</button>
+        </div>
     `;
     document.getElementById('shop-overlay').classList.remove('hidden');
 }
+
 function buy(type, idx) {
+    ensureEquipmentData();
+
     if (type === 'p') {
-        if (player.gold >= 30) { player.gold -= 30; player.potions++; logMessage("薬草購入"); playSound('item'); }
-        else logMessage("ゴールド不足");
+        if (player.gold >= 30) {
+            player.gold -= 30;
+            player.potions++;
+            logMessage("薬草購入");
+            playSound('item');
+        } else logMessage("ゴールド不足");
     } else if (type === 'w') {
-        const list = [{name:"ヒノキの棒",atkBonus:0,price:0},{name:"鉄の剣",atkBonus:8,price:120},{name:"鋼の大剣",atkBonus:18,price:350}];
-        const w = list[idx];
-        if (player.gold >= w.price) { player.gold -= w.price; player.weapon = {name:w.name,atkBonus:w.atkBonus}; logMessage(`${w.name}装備`); playSound('item'); }
-        else logMessage("ゴールド不足");
+        const w = weaponShop[idx];
+        if (!w) return;
+        if (player.ownedWeapons.includes(w.name)) {
+            equipWeapon(idx);
+            return;
+        }
+        if (player.gold >= w.price) {
+            player.gold -= w.price;
+            player.ownedWeapons.push(w.name);
+            player.weapon = {name:w.name,atkBonus:w.atkBonus};
+            logMessage(`${w.name}を購入して装備`);
+            playSound('item');
+        } else logMessage("ゴールド不足");
     } else if (type === 'a') {
-        const list = [{name:"布の服",defBonus:0,price:0},{name:"革の鎧",defBonus:6,price:100},{name:"鋼の鎧",defBonus:14,price:300}];
-        const a = list[idx];
-        if (player.gold >= a.price) { player.gold -= a.price; player.armor = {name:a.name,defBonus:a.defBonus}; logMessage(`${a.name}装備`); playSound('item'); }
-        else logMessage("ゴールド不足");
+        const a = armorShop[idx];
+        if (!a) return;
+        if (player.ownedArmors.includes(a.name)) {
+            equipArmor(idx);
+            return;
+        }
+        if (player.gold >= a.price) {
+            player.gold -= a.price;
+            player.ownedArmors.push(a.name);
+            player.armor = {name:a.name,defBonus:a.defBonus};
+            logMessage(`${a.name}を購入して装備`);
+            playSound('item');
+        } else logMessage("ゴールド不足");
     }
+
     updateStatsUI();
+    if (!document.getElementById('shop-overlay').classList.contains('hidden')) openShop();
+}
+
+function equipWeapon(idx) {
+    ensureEquipmentData();
+    const w = weaponShop[idx];
+    if (!w || !player.ownedWeapons.includes(w.name)) return;
+    player.weapon = {name:w.name,atkBonus:w.atkBonus};
+    logMessage(`${w.name}を装備`);
+    playSound('item');
+    updateStatsUI();
+    if (!document.getElementById('shop-overlay').classList.contains('hidden')) openShop();
+    if (!document.getElementById('equip-overlay').classList.contains('hidden')) openEquipModal();
+}
+
+function equipArmor(idx) {
+    ensureEquipmentData();
+    const a = armorShop[idx];
+    if (!a || !player.ownedArmors.includes(a.name)) return;
+    player.armor = {name:a.name,defBonus:a.defBonus};
+    logMessage(`${a.name}を装備`);
+    playSound('item');
+    updateStatsUI();
+    if (!document.getElementById('shop-overlay').classList.contains('hidden')) openShop();
+    if (!document.getElementById('equip-overlay').classList.contains('hidden')) openEquipModal();
 }
 
 function openItemModal() {
@@ -587,9 +699,41 @@ function usePotion() {
 }
 
 function openEquipModal() {
+    ensureEquipmentData();
+    renderBalance('equip-balance');
+
+    const weapons = player.ownedWeapons.map(name => {
+        const i = weaponShop.findIndex(w => w.name === name);
+        const w = weaponShop[i];
+        if (!w) return '';
+        const equipped = player.weapon.name === w.name;
+        return `
+            <div class="pixel-box-sm equip-row p-2 flex justify-between items-center gap-2">
+                <span>⚔️ ${w.name} (+${w.atkBonus})${equipped ? '<span class="equipped-badge">E</span>' : ''}</span>
+                ${equipped ? '<span class="text-[#f1c40f] text-[10px]">装備中</span>' : `<button onclick="equipWeapon(${i})" class="pixel-btn px-2 py-1 text-[10px] text-[#3ec9c9]">装備</button>`}
+            </div>
+        `;
+    }).join('');
+
+    const armors = player.ownedArmors.map(name => {
+        const i = armorShop.findIndex(a => a.name === name);
+        const a = armorShop[i];
+        if (!a) return '';
+        const equipped = player.armor.name === a.name;
+        return `
+            <div class="pixel-box-sm equip-row p-2 flex justify-between items-center gap-2">
+                <span>🛡️ ${a.name} (+${a.defBonus})${equipped ? '<span class="equipped-badge">E</span>' : ''}</span>
+                ${equipped ? '<span class="text-[#f1c40f] text-[10px]">装備中</span>' : `<button onclick="equipArmor(${i})" class="pixel-btn px-2 py-1 text-[10px] text-[#3ec9c9]">装備</button>`}
+            </div>
+        `;
+    }).join('');
+
     document.getElementById('modal-equip-list').innerHTML = `
-        <div class="pixel-box-sm p-2">武器: ${player.weapon.name} (+${player.weapon.atkBonus})</div>
-        <div class="pixel-box-sm p-2">防具: ${player.armor.name} (+${player.armor.defBonus})</div>`;
+        <div class="text-[#f39c38] font-bold mb-1">武器</div>
+        <div class="space-y-1.5">${weapons}</div>
+        <div class="text-[#3ec9c9] font-bold mt-3 mb-1">防具</div>
+        <div class="space-y-1.5">${armors}</div>
+    `;
     document.getElementById('equip-overlay').classList.remove('hidden');
 }
 
@@ -608,6 +752,7 @@ function loadGame() {
         try {
             const d = JSON.parse(raw);
             Object.assign(player, d.player);
+            ensureEquipmentData();
             currentFloor = d.currentFloor || 1;
             if (d.mapData) mapData = d.mapData;
             document.getElementById('player-name-input').value = player.name;
